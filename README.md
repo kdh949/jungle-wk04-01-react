@@ -124,34 +124,191 @@ element.innerHTML = '...';       // 전체 하위 트리 재계산
 > 이전 VNode 트리와 새 VNode 트리를 재귀적으로 비교해 **Patch 목록**을 만듦.
 > Patch는 실제 DOM에 가할 최소 조작 명세.
 
-### 6가지 비교 케이스
+```js
+// src/diff.js
+export function diff(oldNode, newNode, path = []) {
+  const patches = [];
+  // ...각 케이스 판별 후 patches 반환
+}
+```
+
+---
+
+### Case 1 — 둘 다 없음: 아무것도 하지 않음
+
+```js
+if (oldNode == null && newNode == null) {
+  return patches; // []
+}
+```
+
+두 노드 모두 존재하지 않으면 비교할 대상이 없으므로 즉시 빈 배열 반환.
+
+---
+
+### Case 2 — old만 있음: DELETE
+
+```js
+if (oldNode != null && newNode == null) {
+  patches.push({ type: 'DELETE', path });
+  return patches;
+}
+```
+
+새 트리에 해당 위치 노드가 없다 → 실제 DOM에서 제거.
 
 ```
-diff(oldNode, newNode, path):
-
-  // 1. 둘 다 없음 → 할 일 없음
-  if old == null and new == null → return []
-
-  // 2. old만 있음 → 삭제
-  if old != null and new == null → DELETE
-
-  // 3. new만 있음 → 생성
-  if old == null and new != null → CREATE
-
-  // 4. 둘 다 텍스트
-  if typeof old == string and typeof new == string:
-    if old != new → TEXT(새 내용)
-
-  // 5. 태그가 다름 → 통째로 교체
-  if old.type != new.type → REPLACE
-
-  // 6. 같은 태그 → 속성 비교 + 자식 재귀
-  propsDiff = 달라진 속성만 추출
-  if propsDiff 있음 → UPDATE_PROPS
-
-  for i in max(old.children.length, new.children.length):
-    diff(old.children[i], new.children[i], [...path, i])  ← 재귀
+입력:  old = <li>Item 1</li>,  new = null
+출력:  [{ type: 'DELETE', path: [0] }]
 ```
+
+---
+
+### Case 3 — new만 있음: CREATE
+
+```js
+if (oldNode == null && newNode != null) {
+  patches.push({ type: 'CREATE', path, newNode });
+  return patches;
+}
+```
+
+이전 트리에 없던 노드가 새 트리에 생겼다 → 실제 DOM에 삽입.
+
+```
+입력:  old = null,  new = <li>Item 4</li>
+출력:  [{ type: 'CREATE', path: [3], newNode: {type:'li', ...} }]
+```
+
+---
+
+### Case 4 — 둘 다 텍스트: TEXT 또는 스킵
+
+```js
+const oldIsTextNode = typeof oldNode === 'string';
+const newIsTextNode = typeof newNode === 'string';
+
+if (oldIsTextNode && newIsTextNode) {
+  if (oldNode !== newNode) {
+    patches.push({ type: 'TEXT', path, text: newNode });
+  }
+  return patches;
+}
+```
+
+텍스트 내용이 바뀐 경우에만 패치 생성. 같으면 스킵.
+
+```
+입력:  old = 'Hello',  new = 'World'
+출력:  [{ type: 'TEXT', path: [0, 0], text: 'World' }]
+
+입력:  old = 'Hello',  new = 'Hello'
+출력:  []  ← 변경 없음
+```
+
+> **+α 케이스**: 한쪽만 텍스트인 경우 (예: 텍스트 ↔ 엘리먼트 교체)도 REPLACE로 처리.
+> ```js
+> if (oldIsTextNode || newIsTextNode) {
+>   patches.push({ type: 'REPLACE', path, newNode });
+>   return patches;
+> }
+> ```
+
+---
+
+### Case 5 — 태그 이름이 다름: REPLACE
+
+```js
+if (oldNode.type !== newNode.type) {
+  patches.push({ type: 'REPLACE', path, newNode });
+  return patches;
+}
+```
+
+태그 종류 자체가 바뀌면 내부 속성·자식 비교 없이 통째로 교체.
+`<div>` → `<section>` 같은 경우.
+
+```
+입력:  old = { type: 'div', ... },  new = { type: 'section', ... }
+출력:  [{ type: 'REPLACE', path: [0], newNode: {type:'section', ...} }]
+```
+
+---
+
+### Case 6 — 같은 태그: 속성 비교 + 자식 재귀
+
+같은 태그라면 **속성(props)**과 **자식(children)**을 각각 비교한다.
+
+#### 6-1. 속성 비교 — `diffProps`
+
+```js
+// src/diff.js
+export function diffProps(oldProps = {}, newProps = {}) {
+  const propsDiff = {};
+
+  // 추가되거나 값이 바뀐 속성
+  Object.keys(newProps).forEach((key) => {
+    if (oldProps[key] !== newProps[key]) {
+      propsDiff[key] = newProps[key];
+    }
+  });
+
+  // old에만 있는 속성 → null (삭제 표시)
+  Object.keys(oldProps).forEach((key) => {
+    if (!(key in newProps)) {
+      propsDiff[key] = null;
+    }
+  });
+
+  return propsDiff;
+}
+```
+
+```
+old props: { class: 'box', id: 'title' }
+new props: { class: 'container' }
+
+propsDiff: { class: 'container', id: null }
+           ↑ 변경               ↑ 삭제 표시
+```
+
+변경된 속성이 하나라도 있으면 UPDATE_PROPS 패치 생성:
+
+```js
+const propsDiff = diffProps(oldNode.props, newNode.props);
+
+if (Object.keys(propsDiff).length > 0) {
+  patches.push({ type: 'UPDATE_PROPS', path, propsDiff });
+}
+```
+
+#### 6-2. 자식 재귀 비교
+
+```js
+// key가 있는 자식이 하나라도 있으면 key 기반, 아니면 index 기반
+if (hasAnyKey(oldNode.children) || hasAnyKey(newNode.children)) {
+  patches.push(...diffKeyedChildren(oldNode.children, newNode.children, path));
+} else {
+  const maxChildrenLength = Math.max(
+    oldNode.children.length,
+    newNode.children.length,
+  );
+
+  for (let index = 0; index < maxChildrenLength; index += 1) {
+    patches.push(
+      ...diff(
+        oldNode.children[index] ?? null,  // 없으면 null → Case 2/3로 처리
+        newNode.children[index] ?? null,
+        [...path, index],                 // 경로에 자식 인덱스 추가
+      ),
+    );
+  }
+}
+```
+
+자식 개수가 다를 때 `?? null`로 채워서 Case 2(DELETE) 또는 Case 3(CREATE)이 자연스럽게 처리되게 함.
+
+---
 
 ### Patch 타입 & 실제 DOM 조작
 
@@ -169,9 +326,9 @@ diff(oldNode, newNode, path):
 
 ```
 path: [1, 0]
-  → rootEl.firstChild           (루트 요소)
-       .childNodes[1]           (ul)
-           .childNodes[0]       (첫 번째 li)
+  → rootEl.firstChild           (루트 요소,  예: #sample-root)
+       .childNodes[1]           (두 번째 자식, 예: ul)
+           .childNodes[0]       (ul의 첫 번째 자식, 예: li)
 ```
 
 ---
