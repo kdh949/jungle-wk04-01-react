@@ -44,6 +44,21 @@ const cloneWithKey = (node, key, children) => ({
   key,
 });
 
+const countElementSignatures = (children = []) => {
+  const counts = new Map();
+
+  children.forEach((child) => {
+    if (!isElementVNode(child)) {
+      return;
+    }
+
+    const signature = getElementSignature(child);
+    counts.set(signature, (counts.get(signature) ?? 0) + 1);
+  });
+
+  return counts;
+};
+
 /**
  * VNode 트리에 내부 추적용 key를 부여합니다.
  *
@@ -73,18 +88,41 @@ const reconcileChildren = (oldChildren = [], newChildren = [], createKey) => {
     index,
     signature: getElementSignature(child),
   }));
+  const oldSignatureCounts = countElementSignatures(oldChildren);
+  const newSignatureCounts = countElementSignatures(newChildren);
 
-  const findBestExactMatch = (newChild, newIndex) => {
+  const findSameSignatureAtSameIndex = (newChild, newIndex) => {
+    const oldChild = oldChildren[newIndex];
+
+    if (
+      usedOldIndices.has(newIndex) ||
+      !isElementVNode(oldChild) ||
+      getElementSignature(oldChild) !== getElementSignature(newChild)
+    ) {
+      return null;
+    }
+
+    return { child: oldChild, index: newIndex };
+  };
+
+  const findUniqueExactMatch = (newChild) => {
     const newSignature = getElementSignature(newChild);
 
-    // 가장 먼저 "내용까지 같은 노드"를 찾습니다.
+    // 내용이 고유할 때만 위치를 넘어 exact match 시키면,
+    // reorder는 살리고 duplicate 텍스트 편집에서 key가 서로 뒤바뀌는 문제를 막을 수 있습니다.
+    if (
+      (oldSignatureCounts.get(newSignature) ?? 0) !== 1 ||
+      (newSignatureCounts.get(newSignature) ?? 0) !== 1
+    ) {
+      return null;
+    }
+
     return oldCandidates
       .filter(({ child, index, signature }) =>
         !usedOldIndices.has(index) &&
         isElementVNode(child) &&
-        child.type === newChild.type &&
         signature === newSignature)
-      .sort((left, right) => Math.abs(left.index - newIndex) - Math.abs(right.index - newIndex))[0] ?? null;
+      [0] ?? null;
   };
 
   const findSameTypeAtSameIndex = (newChild, newIndex) => {
@@ -116,12 +154,12 @@ const reconcileChildren = (oldChildren = [], newChildren = [], createKey) => {
       return;
     }
 
-    // 1차: 내용까지 같은 노드 매칭
-    const exactMatch = findBestExactMatch(newChild, newIndex);
+    // 1차: 같은 위치에서 내용까지 그대로인 노드를 먼저 고정합니다.
+    const sameIndexExactMatch = findSameSignatureAtSameIndex(newChild, newIndex);
 
-    if (exactMatch) {
-      matches[newIndex] = exactMatch.index;
-      usedOldIndices.add(exactMatch.index);
+    if (sameIndexExactMatch) {
+      matches[newIndex] = sameIndexExactMatch.index;
+      usedOldIndices.add(sameIndexExactMatch.index);
     }
   });
 
@@ -130,7 +168,21 @@ const reconcileChildren = (oldChildren = [], newChildren = [], createKey) => {
       return;
     }
 
-    // 2차: 같은 위치, 같은 태그 매칭
+    // 2차: 내용이 고유한 경우에만 위치를 넘어 exact match 시켜 reorder를 복원합니다.
+    const uniqueExactMatch = findUniqueExactMatch(newChild);
+
+    if (uniqueExactMatch) {
+      matches[newIndex] = uniqueExactMatch.index;
+      usedOldIndices.add(uniqueExactMatch.index);
+    }
+  });
+
+  newChildren.forEach((newChild, newIndex) => {
+    if (!isElementVNode(newChild) || matches[newIndex] != null) {
+      return;
+    }
+
+    // 3차: 내용이 달라졌더라도 같은 위치의 같은 태그는 "편집된 기존 노드"일 가능성이 큽니다.
     const sameIndexMatch = findSameTypeAtSameIndex(newChild, newIndex);
 
     if (sameIndexMatch) {
@@ -144,7 +196,7 @@ const reconcileChildren = (oldChildren = [], newChildren = [], createKey) => {
       return;
     }
 
-    // 3차: 가장 가까운 같은 태그 매칭
+    // 4차: 마지막 폴백은 가장 가까운 같은 태그입니다.
     const nearestMatch = findNearestSameType(newChild, newIndex);
 
     if (nearestMatch) {
