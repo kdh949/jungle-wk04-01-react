@@ -189,6 +189,16 @@ const stripKeysFromVNode = (vnode) => {
   };
 };
 
+const getInitialHTMLSource = () => {
+  const previewHTML = previewAreaEl.innerHTML.trim();
+
+  if (previewHTML !== '') {
+    return previewHTML;
+  }
+
+  return editorSurfaceEl.innerHTML;
+};
+
 const ensureEditorObserver = () => {
   if (editorObserver != null) {
     return;
@@ -286,12 +296,13 @@ const scheduleSync = () => {
 };
 
 const initialize = () => {
-  // 초기 editor HTML을 VDOM으로 읽을 때부터 내부 key를 붙여둬야
-  // 이후 편집본과 비교할 때 key 기반 diff를 계속 유지할 수 있습니다.
-  const initialVNode = assignInternalKeys(parseHTML(editorSurfaceEl.innerHTML), createInternalKey);
+  // 요구사항 흐름에 맞춰 "실제 영역의 샘플 HTML"을 먼저 읽어 초기 VDOM을 만듭니다.
+  // 그 뒤 테스트 영역(editor-surface)은 이 VDOM을 기반으로 다시 렌더합니다.
+  const initialHTMLSource = getInitialHTMLSource();
+  const initialVNode = assignInternalKeys(parseHTML(initialHTMLSource), createInternalKey);
 
   if (initialVNode == null || typeof initialVNode === 'string') {
-    throw new Error('editor-surface must contain a single root element for initialization.');
+    throw new Error('Initial sample HTML must contain a single root element for initialization.');
   }
 
   history.push(initialVNode);

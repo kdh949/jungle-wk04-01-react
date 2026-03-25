@@ -16,8 +16,9 @@
 7. [State History](#state-history)
 8. [브라우저 DOM API](#브라우저-dom-api)
 9. [DOM 변화 감지 API](#dom-변화-감지-api)
-10. [파일 구조](#파일-구조)
-11. [테스트](#테스트)
+10. [React에서 실제 DOM이 바뀌는 흐름](#react에서-실제-dom이-바뀌는-흐름)
+11. [파일 구조](#파일-구조)
+12. [테스트](#테스트)
 
 ---
 
@@ -35,7 +36,7 @@ npx live-server .
 | 기능 | 설명 |
 |---|---|
 | DOM → VNode 변환 | 실제 DOM 요소를 JS 객체 트리로 읽어들임 |
-| HTML 파싱 | `editor-surface`에서 편집한 HTML 문자열 → VNode 트리 |
+| HTML 파싱 | 실제 영역 샘플 또는 `editor-surface`에서 편집한 HTML 문자열 → VNode 트리 |
 | Diff 알고리즘 | 이전/새 VNode 트리 비교 → 변경 목록(Patch[]) 생성 |
 | Patch 적용 | 변경된 부분만 실제 DOM에 최소 조작으로 반영 |
 | State History | 뒤로가기 / 앞으로가기로 VDOM 상태 이동 |
@@ -44,20 +45,23 @@ npx live-server .
 
 ```
 페이지 로드
-  └─ editor-surface innerHTML → VNode 변환 → 히스토리 초기화 + preview 렌더
+  └─ 실제 영역(preview-area)의 샘플 HTML → 초기 VNode 변환
+       └─ history.push(initialVNode)
+            └─ initialVNode를 테스트 영역(editor-surface)에 렌더
+                 └─ initialVNode를 실제 영역에도 다시 렌더해 초기 상태 동기화
 
-[에디터 수정 (Live Sync 켜짐)]
+[Patch 버튼 클릭 (기본 동작)]
+  └─ editor-surface innerHTML → 새 VNode (내부 key 재조정)
+       └─ diff(이전 VNode, 새 VNode) → Patch[]
+            └─ applyPatches(실제 영역, Patch[]) → 최소 DOM 업데이트
+                 └─ history.push(새 VNode)
+
+[에디터 수정 (Live Sync 옵션 켜짐)]
   └─ MutationObserver 감지 → 180ms debounce → commitEditorChanges()
-       └─ editor-surface innerHTML → 새 VNode (내부 key 재조정)
-            └─ diff(이전 VNode, 새 VNode) → Patch[]
-                 └─ applyPatches(preview 영역, Patch[]) → 최소 DOM 업데이트
-                      └─ history.push(새 VNode)
-
-[Patch 버튼 클릭 (Live Sync 꺼짐)]
-  └─ editor-surface innerHTML → 새 VNode → diff → applyPatches → history.push
+       └─ 위 Patch 흐름을 자동 수행
 
 [뒤로가기 / 앞으로가기]
-  └─ history.back() / forward() → 해당 VNode로 preview + editor 재렌더
+  └─ history.back() / forward() → 해당 VNode로 실제 영역 + 테스트 영역 동시 재렌더
 ```
 
 ---
@@ -531,6 +535,45 @@ io.observe(element);
 
 ---
 
+## React에서 실제 DOM이 바뀌는 흐름
+
+이 프로젝트는 React 전체를 구현한 것은 아니지만, 실제 DOM이 바뀌는 핵심 흐름은 축약해서 그대로 따라간다.
+
+### 1. Render 단계
+
+- 새 상태를 바탕으로 메모리 안에서 다음 UI 트리(Virtual DOM)를 만든다.
+- 이 프로젝트에서는 `parseHTML()`과 편집 결과를 바탕으로 새 VNode 트리를 만드는 단계가 여기에 해당한다.
+
+### 2. Reconciliation 단계
+
+- 이전 트리와 새 트리를 비교해 무엇이 달라졌는지 계산한다.
+- React는 Fiber 트리를 기준으로 비교하고, 이 프로젝트는 `diff()`로 `Patch[]`를 만든다.
+- 핵심은 "바뀐 부분만 찾고 아직 DOM은 건드리지 않는다"는 점이다.
+
+### 3. Commit 단계
+
+- 계산이 끝난 변경 사항만 실제 DOM에 반영한다.
+- React에서는 이 단계에서 DOM mutation이 일어나고, 이 프로젝트에서는 `applyPatches()`가 같은 역할을 맡는다.
+
+```text
+이전 VDOM + 새 VDOM
+  -> diff / reconciliation
+  -> 변경 목록 계산
+  -> commit / patch
+  -> 실제 DOM 업데이트
+```
+
+즉, 이 프로젝트의 대응 관계는 다음과 같다.
+
+| React 개념 | 이 프로젝트 대응 |
+|---|---|
+| Virtual DOM | `VNode` |
+| Reconciliation | `diff()` |
+| Commit phase | `applyPatches()` |
+| State history 기반 재렌더 | `history.back()` / `history.forward()` 후 `render()` |
+
+---
+
 ## 파일 구조
 
 ```
@@ -568,7 +611,11 @@ npm run test:all       # 둘 다 순서대로 실행
 
 ### 결과 요약
 
-**총 130개 테스트, 6개 파일 — 전부 통과 (0 실패)**
+**`npm run test:all` 기준 총 150개 테스트 통과**
+
+- Vitest: 130개
+- node:test (`tests/*.mjs`): 20개
+- 실패: 0개
 
 | 파일 | 테스트 수 | 주요 검증 항목 |
 |---|---|---|
@@ -749,7 +796,7 @@ history.push({ type: 'p', children: ['state3'] });
 - 최신 원격 반영 확인: `git fetch origin` 후 `git pull --ff-only origin main`으로 `origin/main`의 최신 커밋(`63fd1ab`)까지 동기화한 상태에서 재검증했다.
 - VDOM 검증 범위: `parseHTML()`의 단일 루트/다중 루트/텍스트-only 입력, `domToVNode()`의 key 분리와 공백 정규화, `render()`/`vnodeToHTML()` 라운드트립을 확인했다.
 - Diff/Patch 검증 범위: `CREATE`, `DELETE`, `REPLACE`, `UPDATE_PROPS`, `TEXT` 5가지 패치 타입, unkeyed 자식 역순 삭제, keyed 삭제/추가/내용 수정/순서 변경, history back/forward 경계 조건을 확인했다.
-- 자동 테스트 결과: `npm run test:all` 기준 `130 passed`, `0 failed`.
+- 자동 테스트 결과: `npm run test:all` 기준 Vitest 130개 + node:test 20개, 총 150개 테스트가 모두 통과했다.
 
 ### 이슈 / PR / 커밋 기준 오류 이력
 

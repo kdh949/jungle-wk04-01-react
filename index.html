@@ -10,7 +10,7 @@
     <main class="app-shell">
       <header class="app-header">
         <h1>mini-react editor</h1>
-        <p>왼쪽 문서를 수정하면 오른쪽 preview가 diff patch로 갱신됩니다.</p>
+        <p>왼쪽 테스트 영역을 수정한 뒤 Patch를 누르거나 Live Sync를 켜서 오른쪽 실제 영역을 갱신합니다.</p>
       </header>
 
       <section class="workspace">
@@ -18,10 +18,10 @@
           <div class="panel-header">
             <div>
               <h2>테스트 영역</h2>
-              <p>노션처럼 직접 내용을 수정해 보세요.</p>
+              <p>실제 영역의 샘플 HTML을 불러와 여기서 자유롭게 수정해 보세요.</p>
             </div>
             <label class="sync-toggle" for="live-sync-toggle">
-              <input id="live-sync-toggle" type="checkbox" checked />
+              <input id="live-sync-toggle" type="checkbox" />
               <span>Live Sync</span>
             </label>
           </div>
@@ -32,17 +32,7 @@
               contenteditable="true"
               spellcheck="false"
               aria-label="Editable document"
-            >
-              <div id="sample-root">
-                <h1 class="title">Hello, Virtual DOM!</h1>
-                <ul>
-                  <li key="1">Item 1</li>
-                  <li key="2">Item 2</li>
-                  <li key="3">Item 3</li>
-                </ul>
-                <p>Edit this document and watch the preview update on the right.</p>
-              </div>
-            </div>
+            ></div>
           </div>
         </article>
 
@@ -50,11 +40,21 @@
           <div class="panel-header">
             <div>
               <h2>실제 영역</h2>
-              <p>mini-react diff/patch 결과가 여기에 반영됩니다.</p>
+              <p>초기 샘플 HTML과 diff/patch 결과가 여기에 반영됩니다.</p>
             </div>
             <span id="sync-state" class="panel-badge is-muted">Idle</span>
           </div>
-          <div id="preview-area" class="panel-body preview-area"></div>
+          <div id="preview-area" class="panel-body preview-area">
+            <div id="sample-root">
+              <h1 class="title">Hello, Virtual DOM!</h1>
+              <ul>
+                <li key="1">Item 1</li>
+                <li key="2">Item 2</li>
+                <li key="3">Item 3</li>
+              </ul>
+              <p>Edit the test area and click <strong>Patch</strong>.</p>
+            </div>
+          </div>
         </article>
       </section>
 
