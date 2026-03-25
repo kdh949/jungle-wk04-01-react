@@ -1,5 +1,5 @@
 import { applyPatches } from './patch.js';
-import { render } from './renderer.js';
+import { render, vnodeToHTML } from './renderer.js';
 
 const realAreaEl = document.getElementById('real-area');
 const testTextareaEl = document.getElementById('test-textarea');
@@ -19,15 +19,36 @@ const setControlsDisabled = (disabled) => {
   forwardBtnEl.disabled = disabled;
 };
 
+const syncTextareaFromVNode = (vnode) => {
+  testTextareaEl.value = `${vnodeToHTML(vnode)}\n`;
+};
+
 const rerenderFromVNode = (vnode) => {
   realAreaEl.innerHTML = '';
   realAreaEl.appendChild(render(vnode));
-  testTextareaEl.value = realAreaEl.innerHTML;
+  syncTextareaFromVNode(vnode);
 };
 
 const updateButtonState = () => {
+  patchBtnEl.disabled = false;
   backBtnEl.disabled = !history.canBack();
   forwardBtnEl.disabled = !history.canForward();
+};
+
+const applyPatchFromTextarea = () => {
+  const oldVNode = history.current();
+
+  if (oldVNode == null) {
+    return;
+  }
+
+  const newVNode = parseHTML(testTextareaEl.value);
+  const patches = diff(oldVNode, newVNode);
+
+  applyPatches(realAreaEl, patches);
+  history.push(newVNode);
+  syncTextareaFromVNode(newVNode);
+  updateButtonState();
 };
 
 const initialize = () => {
@@ -42,21 +63,7 @@ const initialize = () => {
   updateButtonState();
 };
 
-patchBtnEl.addEventListener('click', () => {
-  const oldVNode = history.current();
-
-  if (oldVNode == null) {
-    return;
-  }
-
-  const newVNode = parseHTML(testTextareaEl.value);
-  const patches = diff(oldVNode, newVNode);
-
-  applyPatches(realAreaEl, patches);
-  history.push(newVNode);
-  testTextareaEl.value = realAreaEl.innerHTML;
-  updateButtonState();
-});
+patchBtnEl.addEventListener('click', applyPatchFromTextarea);
 
 backBtnEl.addEventListener('click', () => {
   const prevVNode = history.back();
@@ -100,8 +107,8 @@ const loadDependencies = async () => {
     console.error(error);
     setControlsDisabled(true);
     testTextareaEl.value =
-      'Member A/B modules are not connected yet.\n' +
-      'Expected: src/vdom.js, src/history.js, src/diff.js';
+      'Failed to load app modules.\n' +
+      'Check src/vdom.js, src/history.js, and src/diff.js.';
   }
 };
 
