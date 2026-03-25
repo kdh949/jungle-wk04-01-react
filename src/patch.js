@@ -1,5 +1,7 @@
 import { render } from './renderer.js';
 
+const PATCH_HIGHLIGHT_CLASS = 'patched-node';
+
 /**
  * path 배열을 따라 rootEl 하위에서 실제 DOM 노드를 찾아 반환합니다.
  *
@@ -44,6 +46,27 @@ const updateProps = (element, propsDiff) => {
   });
 };
 
+const clearHighlights = (rootEl) => {
+  if (rootEl.classList.contains(PATCH_HIGHLIGHT_CLASS)) {
+    rootEl.classList.remove(PATCH_HIGHLIGHT_CLASS);
+  }
+
+  rootEl.querySelectorAll(`.${PATCH_HIGHLIGHT_CLASS}`).forEach((node) => {
+    node.classList.remove(PATCH_HIGHLIGHT_CLASS);
+  });
+};
+
+const highlightNode = (node) => {
+  if (node instanceof Element) {
+    node.classList.add(PATCH_HIGHLIGHT_CLASS);
+    return;
+  }
+
+  if (node instanceof Text && node.parentElement) {
+    node.parentElement.classList.add(PATCH_HIGHLIGHT_CLASS);
+  }
+};
+
 /**
  * Patch 목록을 받아 루트 DOM 요소에 최소한의 조작으로 반영합니다.
  *
@@ -52,6 +75,8 @@ const updateProps = (element, propsDiff) => {
  * @returns {void}
  */
 export function applyPatches(rootEl, patches) {
+  clearHighlights(rootEl);
+
   patches.forEach((patch) => {
     const targetNode = getNodeByPath(rootEl, patch.path);
     const parentNode = getParentByPath(rootEl, patch.path);
@@ -70,11 +95,13 @@ export function applyPatches(rootEl, patches) {
             : parentNode.childNodes[childIndex] ?? null;
 
         parentNode.insertBefore(newNode, referenceNode);
+        highlightNode(newNode);
         break;
       }
 
       case 'DELETE':
         targetNode?.parentNode?.removeChild(targetNode);
+        highlightNode(parentNode);
         break;
 
       case 'REPLACE': {
@@ -82,24 +109,29 @@ export function applyPatches(rootEl, patches) {
           return;
         }
 
-        targetNode.parentNode.replaceChild(render(patch.newNode), targetNode);
+        const newNode = render(patch.newNode);
+        targetNode.parentNode.replaceChild(newNode, targetNode);
+        highlightNode(newNode);
         break;
       }
 
       case 'UPDATE_PROPS':
         if (targetNode instanceof Element) {
           updateProps(targetNode, patch.propsDiff ?? {});
+          highlightNode(targetNode);
         }
         break;
 
       case 'TEXT':
         if (targetNode instanceof Text) {
           targetNode.textContent = patch.text ?? '';
+          highlightNode(targetNode);
           return;
         }
 
         if (targetNode instanceof Element) {
           targetNode.textContent = patch.text ?? '';
+          highlightNode(targetNode);
         }
         break;
 
