@@ -17,6 +17,7 @@
 8. [브라우저 DOM API](#브라우저-dom-api)
 9. [DOM 변화 감지 API](#dom-변화-감지-api)
 10. [파일 구조](#파일-구조)
+11. [테스트](#테스트)
 
 ---
 
@@ -526,11 +527,206 @@ io.observe(element);
 mini-react/
 ├── index.html        진입점. <script type="module" src="src/main.js">
 ├── style.css         레이아웃 및 스타일
-└── src/
-    ├── vdom.js       HTML 파싱 + DOM → VNode 변환
-    ├── history.js    듀얼 스택 히스토리 관리
-    ├── diff.js       Diff 알고리즘 (VNode 비교 → Patch[])
-    ├── patch.js      Patch 적용 (Patch[] → 실제 DOM 조작)
-    ├── renderer.js   VNode → 실제 DOM Element (초기 렌더)
-    └── main.js       UI 초기화, 이벤트 바인딩
+├── src/
+│   ├── vdom.js       HTML 파싱 + DOM → VNode 변환
+│   ├── history.js    듀얼 스택 히스토리 관리
+│   ├── diff.js       Diff 알고리즘 (VNode 비교 → Patch[])
+│   ├── patch.js      Patch 적용 (Patch[] → 실제 DOM 조작)
+│   ├── renderer.js   VNode → 실제 DOM Element (초기 렌더)
+│   └── main.js       UI 초기화, 이벤트 바인딩
+└── tests/
+    ├── diff.test.js        diffProps + diff 단위 테스트
+    ├── history.test.js     createHistory 단위 테스트
+    ├── vdom.test.js        domToVNode + normalizeTextNode 단위 테스트
+    ├── renderer.test.js    render + vnodeToHTML 단위 테스트
+    ├── patch.test.js       getNodeByPath + applyPatches 단위 테스트
+    └── integration.test.js diff → patch → DOM 통합 테스트
+```
+
+---
+
+## 테스트
+
+### 실행
+
+```bash
+npm test               # Vitest (tests/**/*.test.js)
+npm run test:node      # node:test (tests/*.mjs)
+npm run test:all       # 둘 다 순서대로 실행
+```
+
+### 결과 요약
+
+**총 124개 테스트, 6개 파일 — 전부 통과 (0 실패)**
+
+| 파일 | 테스트 수 | 주요 검증 항목 |
+|---|---|---|
+| `diff.test.js` | 32 | diffProps, diff 6케이스, unkeyed/keyed 자식 비교 |
+| `history.test.js` | 20 | push/back/forward/canBack/canForward, 복합 시나리오 |
+| `vdom.test.js` | 15 | domToVNode, 텍스트 정규화, 키 분리, 공백 필터링 |
+| `renderer.test.js` | 20 | render, vnodeToHTML 직렬화, HTML 이스케이프 |
+| `patch.test.js` | 17 | getNodeByPath, applyPatches 5가지 패치 타입 |
+| `integration.test.js` | 20 | diff + patch end-to-end, history + DOM, 라운드트립 |
+
+---
+
+### 모듈별 주요 테스트 케이스 및 예시
+
+#### `diffProps` — props 변경 감지
+
+```js
+// 추가
+diffProps({}, { id: 'new' })
+// → { id: 'new' }
+
+// 삭제 → null 표시
+diffProps({ id: 'x', class: 'y' }, {})
+// → { id: null, class: null }
+
+// 혼합 (추가 + 변경 + 삭제)
+diffProps({ id: 'old', class: 'x', 'data-remove': '1' }, { id: 'new', href: 'url' })
+// → { id: 'new', href: 'url', class: null, 'data-remove': null }
+```
+
+---
+
+#### `diff` — VNode 트리 비교 6케이스
+
+```js
+// 둘 다 null → 패치 없음
+diff(null, null) // → []
+
+// oldNode만 null → CREATE
+diff(null, { type: 'div', props: {}, children: [] })
+// → [{ type: 'CREATE', path: [], newNode: { type: 'div', ... } }]
+
+// newNode만 null → DELETE
+diff({ type: 'div', props: {}, children: [] }, null)
+// → [{ type: 'DELETE', path: [] }]
+
+// 다른 텍스트 → TEXT
+diff('hello', 'world')
+// → [{ type: 'TEXT', path: [], text: 'world' }]
+
+// 텍스트 ↔ 엘리먼트 교체 → REPLACE
+diff('text', { type: 'span', props: {}, children: [] })
+// → [{ type: 'REPLACE', path: [], newNode: { type: 'span', ... } }]
+
+// 타입 변경 → REPLACE
+diff({ type: 'div', ... }, { type: 'span', ... })
+// → [{ type: 'REPLACE', path: [], newNode: { type: 'span', ... } }]
+
+// props 변경 → UPDATE_PROPS
+diff({ type: 'div', props: { id: 'a' }, ... }, { type: 'div', props: { id: 'b' }, ... })
+// → [{ type: 'UPDATE_PROPS', path: [], propsDiff: { id: 'b' } }]
+```
+
+---
+
+#### `diff` — unkeyed children (인덱스 기반)
+
+```js
+// 자식 전체 삭제 → DELETE는 역순 (index-shift 방지)
+diff(
+  { type: 'ul', props: {}, children: [li('A'), li('B'), li('C')] },
+  { type: 'ul', props: {}, children: [] }
+)
+// → [DELETE[2], DELETE[1], DELETE[0]]   ← 높은 인덱스부터
+//    (정순이면 DELETE[0] 후 'B'가 인덱스 0으로 밀려 잘못된 노드 삭제)
+
+// 자식 추가 → CREATE (뒤에 순서대로)
+diff(
+  { type: 'ul', props: {}, children: [li('A')] },
+  { type: 'ul', props: {}, children: [li('A'), li('B'), li('C')] }
+)
+// → [CREATE path:[1] newNode:li('B'), CREATE path:[2] newNode:li('C')]
+```
+
+---
+
+#### `diff` — keyed children (key 기반)
+
+```js
+// 중간 항목 삭제 (key='b')
+diff(
+  { type: 'ul', props: {}, children: [kli('a','A'), kli('b','B'), kli('c','C')] },
+  { type: 'ul', props: {}, children: [kli('a','A'), kli('c','C')] }
+)
+// → [DELETE path:[1]]   ← key='b'의 old index
+
+// DELETE가 CREATE/UPDATE보다 항상 먼저 옴
+// → DOM index 일관성 유지
+```
+
+---
+
+#### `domToVNode` — 텍스트 정규화
+
+```js
+// 연속 공백 → 단일 공백
+makeTextNode('hello   world') → 'hello world'
+
+// 공백 전용 → null (필터링)
+makeTextNode('   \n  ') → null
+
+// 앞뒤 공백은 trim하지 않음 (텍스트 컨텍스트 보존)
+makeTextNode('  hello  ') → ' hello '
+
+// key 속성 → props 제외, vnode.key에 저장
+domToVNode(<li key="item-1">text</li>)
+// → { type: 'li', props: {}, children: ['text'], key: 'item-1' }
+```
+
+---
+
+#### `vnodeToHTML` — 공백 안전 직렬화
+
+```js
+// 텍스트 + 인라인 엘리먼트 혼합 → 줄바꿈 없음
+//   (줄바꿈이 있으면 parseHTML 후 공백 텍스트 노드 생성 → 불필요한 diff 발생)
+vnodeToHTML({ type: 'p', children: ['Hello ', { type: 'strong', children: ['World'] }, '!'] })
+// → '<p>Hello <strong>World</strong>!</p>'   ← 한 줄
+
+// 블록 엘리먼트 → 들여쓰기
+vnodeToHTML({ type: 'ul', children: [li('A'), li('B')] })
+// → '<ul>\n  <li>A</li>\n  <li>B</li>\n</ul>'
+
+// HTML 특수문자 이스케이프
+vnodeToHTML('<script>') // → '&lt;script&gt;'
+```
+
+---
+
+#### `getNodeByPath` + `applyPatches` — DOM 탐색 및 조작
+
+```js
+// path 탐색: rootEl.firstChild → childNodes[i] 순회
+// rootEl = <div><ul><li>A</li><li>B</li></ul></div>
+
+getNodeByPath(root, [])      // → <div> (firstChild)
+getNodeByPath(root, [0])     // → <ul>
+getNodeByPath(root, [0, 0])  // → <li>A</li>
+getNodeByPath(root, [0, 0, 0]) // → TextNode "A"
+getNodeByPath(root, [0, 99]) // → null
+
+// 패치 적용
+applyPatches(root, [{ type: 'TEXT', path: [0, 0, 0], text: 'Updated' }])
+// → <li>A</li> 의 텍스트가 'Updated'로 변경
+```
+
+---
+
+#### 통합 시나리오: History + Diff + Patch
+
+```js
+const history = createHistory();
+history.push({ type: 'p', children: ['state1'] });
+history.push({ type: 'p', children: ['state2'] });
+history.push({ type: 'p', children: ['state3'] });
+
+// DOM에 state3 렌더 후
+// back() → state2로 이동, diff → patch → DOM이 'state2'
+// back() → state1로 이동, diff → patch → DOM이 'state1'
+// forward() → state2로 이동, diff → patch → DOM이 'state2'
+// push(state4) → forwardStack 초기화 → canForward() === false
 ```
