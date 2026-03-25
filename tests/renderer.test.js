@@ -23,9 +23,14 @@ describe('render', () => {
     expect(el.getAttribute('class')).toBe('link');
   });
 
-  it('key → key attribute', () => {
-    const el = render({ type: 'li', props: {}, children: [], key: 'k1' });
+  it('key → key attribute (includeKeyAttribute: true)', () => {
+    const el = render({ type: 'li', props: {}, children: [], key: 'k1' }, { includeKeyAttribute: true });
     expect(el.getAttribute('key')).toBe('k1');
+  });
+
+  it('key → key attribute 기본값에서는 포함하지 않음', () => {
+    const el = render({ type: 'li', props: {}, children: [], key: 'k1' });
+    expect(el.getAttribute('key')).toBeNull();
   });
 
   it('텍스트 자식 렌더', () => {
