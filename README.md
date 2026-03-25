@@ -1,10 +1,4 @@
 # mini-react
-
-> 바닐라 JavaScript로 React의 핵심 개념인 Virtual DOM, Diff, Patch, State History를 직접 구현한 프로젝트입니다.  
-> 발표용 README 기준으로 과제 요구사항, 실제 구현 방식, 핵심 알고리즘을 한눈에 볼 수 있도록 정리했습니다.
-
-![mini-react preview](docs/assets/ojUqaUmoKB2oKxhem1fdr62sFAOJ_w93bHtnhj9QN7M=.png)
-
 ## 목차
 
 1. [프로젝트 소개](#프로젝트-소개)
