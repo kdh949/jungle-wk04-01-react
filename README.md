@@ -1,109 +1,142 @@
-# mini-react — Virtual DOM & Diff 알고리즘 구현
+# mini-react
 
-> 바닐라 JS로 React 핵심 개념을 직접 만들어보는 프로젝트.
-> 프레임워크 없이 HTML + CSS + Vanilla JS (ES6+) 만으로 구현.
+> 바닐라 JavaScript로 React의 핵심 개념인 Virtual DOM, Diff, Patch, State History를 직접 구현한 프로젝트입니다.  
+> 발표용 README 기준으로 과제 요구사항, 실제 구현 방식, 핵심 알고리즘을 한눈에 볼 수 있도록 정리했습니다.
 
----
+![mini-react preview](docs/assets/ojUqaUmoKB2oKxhem1fdr62sFAOJ_w93bHtnhj9QN7M=.png)
 
 ## 목차
 
-1. [실행 방법](#실행-방법)
-2. [구현 기능](#구현-기능)
-3. [DOM이 느린 이유](#dom이-느린-이유)
-4. [Virtual DOM 이란?](#virtual-dom-이란)
-5. [Diff 알고리즘](#diff-알고리즘)
-6. [Key 기반 최적화](#key-기반-최적화)
-7. [State History](#state-history)
-8. [브라우저 DOM API](#브라우저-dom-api)
-9. [DOM 변화 감지 API](#dom-변화-감지-api)
-10. [파일 구조](#파일-구조)
-11. [테스트](#테스트)
+1. [프로젝트 소개](#프로젝트-소개)
+2. [과제 요구사항 반영](#과제-요구사항-반영)
+3. [실행 방법](#실행-방법)
+4. [화면 구성과 동작 흐름](#화면-구성과-동작-흐름)
+5. [왜 DOM 직접 조작은 느린가](#왜-dom-직접-조작은-느린가)
+6. [Virtual DOM 설계](#virtual-dom-설계)
+7. [Diff 알고리즘](#diff-알고리즘)
+8. [Patch 적용 방식](#patch-적용-방식)
+9. [State History](#state-history)
+10. [브라우저 API 활용](#브라우저-api-활용)
+11. [프로젝트 구조](#프로젝트-구조)
+12. [테스트](#테스트)
 
----
+## 프로젝트 소개
+
+이 프로젝트의 목표는 React가 실제 DOM을 바로 조작하지 않고, 왜 Virtual DOM과 Diffing 전략을 사용하는지 직접 구현하면서 이해하는 것입니다.
+
+- 실제 DOM을 읽어 `VNode` 트리로 변환합니다.
+- 사용자가 수정한 HTML을 다시 `VNode`로 파싱합니다.
+- 이전 트리와 새 트리를 비교해 `Patch[]`를 생성합니다.
+- 필요한 변경만 실제 DOM에 반영합니다.
+- 변경된 `VNode`를 히스토리에 저장해 `Back` / `Forward`를 지원합니다.
+
+과제 기본 요구사항에 더해 아래 기능도 함께 구현했습니다.
+
+- `contenteditable` 기반 테스트 영역
+- `Live Sync` 토글
+- Patch Inspector
+- `MOVE` 패치를 포함한 key 기반 재정렬 처리
+- 내부 key 복원 알고리즘
+
+## 과제 요구사항 반영
+
+과제 문서 기준: `docs/[WEEK04] 미니 리액트 만들기.md`
+
+| 요구사항 | 구현 내용 |
+| --- | --- |
+| 실제 DOM을 Virtual DOM으로 변환 | `src/vdom.js`의 `domToVNode()` |
+| HTML 문자열을 Virtual DOM으로 파싱 | `src/vdom.js`의 `parseHTML()` |
+| 두 Virtual DOM 비교 | `src/diff.js`의 `diff()` |
+| 변경 부분만 실제 DOM에 반영 | `src/patch.js`의 `applyPatches()` |
+| 실제 영역 + 테스트 영역 + Patch / 뒤로가기 / 앞으로가기 | `index.html`, `src/main.js` |
+| State History 이동 | `src/history.js`의 dual stack 구조 |
+| 실제 DOM이 느린 이유, Reflow / Repaint 설명 | README 하단 이론 정리 |
+| 브라우저 DOM API / 변화 감지 API 활용 | `DOMParser`, `MutationObserver`, DOM 조작 API 사용 |
+
+과제 문서에서는 테스트 영역을 일반 입력 영역으로 설명하지만, 실제 구현에서는 발표와 시연을 더 직관적으로 만들기 위해 `textarea` 대신 `contenteditable` 기반 편집기를 사용했습니다.
 
 ## 실행 방법
 
+빌드 도구 없이 동작하는 프로젝트이며, 테스트만 `vitest`를 사용합니다.
+
 ```bash
+npm install
 npx live-server .
-# 또는 index.html 을 브라우저에서 직접 열기 (서버 불필요)
 ```
 
----
+또는 `index.html`을 브라우저에서 직접 열어도 됩니다.
 
-## 구현 기능
+테스트 실행:
 
-| 기능 | 설명 |
-|---|---|
-| DOM → VNode 변환 | 실제 DOM 요소를 JS 객체 트리로 읽어들임 |
-| HTML 파싱 | `textarea`에 입력한 HTML 문자열 → VNode 트리 |
-| Diff 알고리즘 | 이전/새 VNode 트리 비교 → 변경 목록(Patch[]) 생성 |
-| Patch 적용 | 변경된 부분만 실제 DOM에 최소 조작으로 반영 |
-| State History | 뒤로가기 / 앞으로가기로 VDOM 상태 이동 |
-
-**사용 흐름**
-
+```bash
+npm test
 ```
-페이지 로드
-  └─ editor-surface innerHTML → VNode 변환 → 히스토리 초기화 + preview 렌더
 
-[에디터 수정 (Live Sync 켜짐)]
-  └─ MutationObserver 감지 → 180ms debounce → commitEditorChanges()
-       └─ editor-surface innerHTML → 새 VNode (내부 key 재조정)
-            └─ diff(이전 VNode, 새 VNode) → Patch[]
-                 └─ applyPatches(preview 영역, Patch[]) → 최소 DOM 업데이트
-                      └─ history.push(새 VNode)
+추가 Node 테스트:
 
-[Patch 버튼 클릭 (Live Sync 꺼짐)]
-  └─ editor-surface innerHTML → 새 VNode → diff → applyPatches → history.push
+```bash
+npm run test:node
+```
+
+## 화면 구성과 동작 흐름
+
+### 화면 구성
+
+- 왼쪽: 테스트 영역
+- 오른쪽: 실제 영역
+- 하단: Patch Inspector, History 버튼, Patch 버튼
+
+현재 구현에서는 과제 기본 버전에 아래 UI를 더했습니다.
+
+- `Live Sync`가 켜져 있으면 입력 후 debounce 뒤 자동 patch
+- `Live Sync`가 꺼져 있으면 `Patch` 버튼으로만 반영
+- Patch Inspector에서 어떤 패치가 생성됐는지 텍스트로 설명
+
+### 동작 흐름
+
+```text
+[초기 로드]
+editor HTML
+  -> parseHTML()
+  -> assignInternalKeys()
+  -> history.push(initialVNode)
+  -> render(initialVNode)
+
+[편집 발생]
+editor HTML
+  -> parseHTML()
+  -> reconcileInternalKeys(oldVNode, parsedVNode)
+  -> diff(oldVNode, newVNode)
+  -> applyPatches(previewArea, patches)
+  -> history.push(newVNode)
 
 [뒤로가기 / 앞으로가기]
-  └─ history.back() / forward() → 해당 VNode로 preview + editor 재렌더
+history.back() / history.forward()
+  -> 해당 VNode를 editor, preview에 다시 렌더
 ```
 
----
+## 왜 DOM 직접 조작은 느린가
 
-## DOM이 느린 이유
+브라우저에서 DOM을 수정하면 단순히 노드 하나만 바뀌는 것이 아니라, 아래 렌더링 파이프라인에 영향을 줄 수 있습니다.
 
-> DOM 조작 → Reflow → Repaint 순으로 브라우저가 화면을 다시 그림.
-> 작은 변경 하나가 전체 트리 재계산을 유발할 수 있음.
-
-### 브라우저 렌더링 파이프라인
-
-```
-JS 실행 → Style 계산 → Layout(Reflow) → Paint(Repaint) → Composite
+```text
+JavaScript -> Style 계산 -> Layout(Reflow) -> Paint(Repaint) -> Composite
 ```
 
-| 단계 | 설명 | 비용 |
-|---|---|---|
-| **Layout (Reflow)** | 요소의 위치·크기 재계산. 부모 변경 시 자식 전체에 전파됨 | 매우 높음 |
-| **Paint (Repaint)** | 색상·그림자 등 픽셀을 다시 그림 | 중간 |
-| **Composite** | 레이어 합성 (GPU 처리) | 낮음 |
+- `Reflow`: 요소의 위치와 크기를 다시 계산합니다.
+- `Repaint`: 색상, 그림자, 텍스트 등 픽셀을 다시 그립니다.
+- `Composite`: 레이어를 합성합니다.
 
-**Reflow를 유발하는 대표적인 조작들**
+예를 들어 `innerHTML` 전체를 다시 갈아끼우면 작은 수정에도 큰 범위의 재계산이 일어날 수 있습니다. 그래서 이 프로젝트는 변경점을 메모리 상의 `VNode` 트리에서 먼저 계산하고, 실제 DOM에는 필요한 조작만 반영합니다.
 
-```js
-element.style.width = '100px';   // Layout 재계산
-element.offsetHeight;            // 값을 읽는 것만으로도 강제 Reflow 발생
-element.innerHTML = '...';       // 전체 하위 트리 재계산
-```
-
-**Virtual DOM의 해법**
-변경 사항을 메모리에서 먼저 계산하고, 실제로 바뀐 부분만 한 번에 DOM에 반영.
-→ 불필요한 Reflow 횟수를 줄임.
-
----
-
-## Virtual DOM 이란?
-
-> 실제 DOM을 직접 다루는 대신, 메모리 상의 JS 객체로 UI 구조를 표현한 것.
+## Virtual DOM 설계
 
 ### VNode 구조
 
 ```js
-// <div class="box"><p id="title">Hello</p></div>
 {
   type: 'div',
-  props: { class: 'box' },
+  props: { class: 'container' },
   children: [
     {
       type: 'p',
@@ -116,628 +149,274 @@ element.innerHTML = '...';       // 전체 하위 트리 재계산
 }
 ```
 
-- `type` — 태그 이름 (소문자). 텍스트 노드는 `string`으로 직접 저장.
-- `props` — HTML 어트리뷰트 키-값. 이벤트 핸들러는 포함하지 않음.
-- `children` — 자식 배열. 문자열(텍스트) 또는 VNode.
-- `key` — 리스트 비교 시 노드 추적용 고유 키.
+- `type`: 태그 이름
+- `props`: HTML attribute 집합
+- `children`: 문자열 또는 하위 `VNode`
+- `key`: 리스트 비교를 위한 식별자
 
----
+### Patch 구조
+
+과제 기본 Patch 타입은 `CREATE`, `DELETE`, `REPLACE`, `UPDATE_PROPS`, `TEXT`이지만, 현재 구현은 key 기반 재정렬을 위해 `MOVE`까지 확장했습니다.
+
+```js
+{
+  type: 'MOVE',
+  from: [0, 2],
+  path: [0, 0]
+}
+```
 
 ## Diff 알고리즘
 
-> 이전 VNode 트리와 새 VNode 트리를 재귀적으로 비교해 **Patch 목록**을 만듦.
-> Patch는 실제 DOM에 가할 최소 조작 명세.
+이 프로젝트의 Diff는 React의 핵심 아이디어를 참고해 `VNode` 트리를 재귀 비교하고, 그 결과를 `Patch[]`로 표현합니다.  
+중요한 점은 "모든 경우를 완전 탐색"하는 것이 아니라, React처럼 예측 가능한 규칙을 두고 빠르게 비교한다는 것입니다.
 
-```js
-// src/diff.js
-export function diff(oldNode, newNode, path = []) {
-  const patches = [];
-  // ...각 케이스 판별 후 patches 반환
-}
-```
+### 1. React Diffing 알고리즘의 기본 5가지 유형
 
----
+#### 1) Different Types
 
-### Case 1 — 둘 다 없음: 아무것도 하지 않음
+노드 타입이 다르면 같은 노드로 볼 수 없으므로 전체 교체합니다.
 
-```js
-if (oldNode == null && newNode == null) {
-  return patches; // []
-}
-```
-
-두 노드 모두 존재하지 않으면 비교할 대상이 없으므로 즉시 빈 배열 반환.
-
----
-
-### Case 2 — old만 있음: DELETE
-
-```js
-if (oldNode != null && newNode == null) {
-  patches.push({ type: 'DELETE', path });
-  return patches;
-}
-```
-
-새 트리에 해당 위치 노드가 없다 → 실제 DOM에서 제거.
-
-```
-입력:  old = <li>Item 1</li>,  new = null
-출력:  [{ type: 'DELETE', path: [0] }]
-```
-
----
-
-### Case 3 — new만 있음: CREATE
-
-```js
-if (oldNode == null && newNode != null) {
-  patches.push({ type: 'CREATE', path, newNode });
-  return patches;
-}
-```
-
-이전 트리에 없던 노드가 새 트리에 생겼다 → 실제 DOM에 삽입.
-
-```
-입력:  old = null,  new = <li>Item 4</li>
-출력:  [{ type: 'CREATE', path: [3], newNode: {type:'li', ...} }]
-```
-
----
-
-### Case 4 — 둘 다 텍스트: TEXT 또는 스킵
-
-```js
-const oldIsTextNode = typeof oldNode === 'string';
-const newIsTextNode = typeof newNode === 'string';
-
-if (oldIsTextNode && newIsTextNode) {
-  if (oldNode !== newNode) {
-    patches.push({ type: 'TEXT', path, text: newNode });
-  }
-  return patches;
-}
-```
-
-텍스트 내용이 바뀐 경우에만 패치 생성. 같으면 스킵.
-
-```
-입력:  old = 'Hello',  new = 'World'
-출력:  [{ type: 'TEXT', path: [0, 0], text: 'World' }]
-
-입력:  old = 'Hello',  new = 'Hello'
-출력:  []  ← 변경 없음
-```
-
-> **+α 케이스**: 한쪽만 텍스트인 경우 (예: 텍스트 ↔ 엘리먼트 교체)도 REPLACE로 처리.
-> ```js
-> if (oldIsTextNode || newIsTextNode) {
->   patches.push({ type: 'REPLACE', path, newNode });
->   return patches;
-> }
-> ```
-
----
-
-### Case 5 — 태그 이름이 다름: REPLACE
+- 예시: `<div>` -> `<section>`
+- 현재 구현: `REPLACE`
 
 ```js
 if (oldNode.type !== newNode.type) {
   patches.push({ type: 'REPLACE', path, newNode });
-  return patches;
 }
 ```
 
-태그 종류 자체가 바뀌면 내부 속성·자식 비교 없이 통째로 교체.
-`<div>` → `<section>` 같은 경우.
+#### 2) Same Type DOM Element
 
-```
-입력:  old = { type: 'div', ... },  new = { type: 'section', ... }
-출력:  [{ type: 'REPLACE', path: [0], newNode: {type:'section', ...} }]
-```
+태그는 같고 속성만 달라졌다면 노드는 재사용하고 props만 수정합니다.
 
----
-
-### Case 6 — 같은 태그: 속성 비교 + 자식 재귀
-
-같은 태그라면 **속성(props)**과 **자식(children)**을 각각 비교한다.
-
-#### 6-1. 속성 비교 — `diffProps`
-
-```js
-// src/diff.js
-export function diffProps(oldProps = {}, newProps = {}) {
-  const propsDiff = {};
-
-  // 추가되거나 값이 바뀐 속성
-  Object.keys(newProps).forEach((key) => {
-    if (oldProps[key] !== newProps[key]) {
-      propsDiff[key] = newProps[key];
-    }
-  });
-
-  // old에만 있는 속성 → null (삭제 표시)
-  Object.keys(oldProps).forEach((key) => {
-    if (!(key in newProps)) {
-      propsDiff[key] = null;
-    }
-  });
-
-  return propsDiff;
-}
-```
-
-```
-old props: { class: 'box', id: 'title' }
-new props: { class: 'container' }
-
-propsDiff: { class: 'container', id: null }
-           ↑ 변경               ↑ 삭제 표시
-```
-
-변경된 속성이 하나라도 있으면 UPDATE_PROPS 패치 생성:
+- 예시: `<div class="old">` -> `<div class="new">`
+- 현재 구현: `diffProps()` -> `UPDATE_PROPS`
 
 ```js
 const propsDiff = diffProps(oldNode.props, newNode.props);
-
-if (Object.keys(propsDiff).length > 0) {
-  patches.push({ type: 'UPDATE_PROPS', path, propsDiff });
-}
 ```
 
-#### 6-2. 자식 재귀 비교
+#### 3) Same Type Component Element
+
+React는 같은 컴포넌트 타입이면 인스턴스를 유지하고 props 변경에 따라 다시 렌더링합니다.  
+이 프로젝트는 바닐라 JS 기반이라 함수형/클래스형 컴포넌트 계층 자체는 구현하지 않았습니다. 대신 "같은 타입이면 내부 구조를 계속 비교한다"는 아이디어를 `VNode` 수준에서 반영했습니다.
+
+- React 개념: 같은 컴포넌트 타입 유지 + props 업데이트
+- 우리 구현: 같은 태그 타입 유지 + props / children 재귀 비교
+
+#### 4) Children Recursion
+
+부모 노드 타입이 같으면 자식 노드도 재귀적으로 비교합니다.
 
 ```js
-// key가 있는 자식이 하나라도 있으면 key 기반, 아니면 index 기반
-if (hasAnyKey(oldNode.children) || hasAnyKey(newNode.children)) {
-  patches.push(...diffKeyedChildren(oldNode.children, newNode.children, path));
-} else {
-  patches.push(...diffUnkeyedChildren(oldNode.children, newNode.children, path));
-}
-```
-
-`diffUnkeyedChildren`은 공통 구간은 앞에서부터 재귀 비교하고, 삭제가 필요한 자식은 **뒤에서부터(역순)** DELETE 패치를 생성해 인덱스 밀림을 방지한다.
-
-```js
-// src/diff.js — diffUnkeyedChildren 핵심 구조
-const sharedLength = Math.min(oldChildren.length, newChildren.length);
-
-// 1) 공통 구간: index 순서대로 재귀 diff
 for (let index = 0; index < sharedLength; index += 1) {
   patches.push(...diff(oldChildren[index], newChildren[index], [...path, index]));
 }
+```
 
-// 2) old가 더 길면: 높은 인덱스부터 DELETE (역순 → index 불변)
-for (let index = oldChildren.length - 1; index >= sharedLength; index -= 1) {
-  patches.push({ type: 'DELETE', path: [...path, index] });
+#### 5) Keys Optimization
+
+리스트 비교에서 `key`가 있으면 "같은 위치"보다 "같은 아이템"을 먼저 찾을 수 있습니다.  
+이 덕분에 중간 삽입, 삭제, 순서 변경을 더 정확하게 처리할 수 있습니다.
+
+- 예시: `[a, b, c]` -> `[c, a, b]`
+- 현재 구현: key 기반 매칭 + `MOVE`, `CREATE`, `DELETE`
+
+### 2. 우리 프로젝트에서 직접 추가한 알고리즘
+
+과제와 React 개념 설명만으로는 실제 동작이 부족해서, 아래 로직을 추가로 구현했습니다.
+
+#### 1) `null` 비교를 통한 CREATE / DELETE 분기
+
+React 5유형 설명만으로는 "노드가 생겼다 / 사라졌다"를 구체 패치로 표현하기 어렵습니다.  
+그래서 실제 구현에서는 아래 두 케이스를 먼저 처리합니다.
+
+```js
+if (oldNode == null && newNode != null) {
+  patches.push({ type: 'CREATE', path, newNode });
 }
 
-// 3) new가 더 길면: CREATE
-for (let index = sharedLength; index < newChildren.length; index += 1) {
-  patches.push({ type: 'CREATE', path: [...path, index], newNode: newChildren[index] });
+if (oldNode != null && newNode == null) {
+  patches.push({ type: 'DELETE', path });
 }
 ```
 
----
+#### 2) 텍스트 노드 전용 비교
 
-### Patch 타입 & 실제 DOM 조작
+텍스트는 엘리먼트와 구조가 다르기 때문에 별도 분기가 필요합니다.
 
-| Patch 타입 | 발생 조건 | DOM API |
-|---|---|---|
-| `CREATE` | 새 노드 추가 | `insertBefore` |
-| `DELETE` | 노드 삭제 | `removeChild` |
-| `REPLACE` | 태그 종류 변경 | `replaceChild` |
-| `UPDATE_PROPS` | 속성 추가·변경·삭제 | `setAttribute` / `removeAttribute` |
-| `TEXT` | 텍스트 내용 변경 | `textContent =` |
+- 문자열 -> 문자열: 다르면 `TEXT`
+- 문자열 <-> 엘리먼트: `REPLACE`
 
-### path 란?
-
-루트에서 해당 노드까지 `childNodes` 인덱스를 나열한 배열.
-
-```
-path: [1, 0]
-  → rootEl.firstChild           (루트 요소,  예: #sample-root)
-       .childNodes[1]           (두 번째 자식, 예: ul)
-           .childNodes[0]       (ul의 첫 번째 자식, 예: li)
+```js
+if (typeof oldNode === 'string' && typeof newNode === 'string') {
+  if (oldNode !== newNode) {
+    patches.push({ type: 'TEXT', path, text: newNode });
+  }
+}
 ```
 
----
+#### 3) key가 없는 자식은 index 기반으로 비교
 
-## Key 기반 최적화
+모든 노드가 `key`를 갖는 것은 아니기 때문에, 기본 폴백 전략으로 index 기반 비교를 둡니다.
 
-> key가 없으면 인덱스 위치만 비교 → 삭제가 앞에 있을 때 불필요한 UPDATE가 대량 발생.
+- 공통 길이 구간: 앞에서부터 재귀 비교
+- 남는 old 자식: 뒤에서부터 `DELETE`
+- 남는 new 자식: `CREATE`
 
-### 문제: index 기반
+삭제를 뒤에서부터 처리하는 이유는 앞 인덱스가 밀리는 문제를 막기 위해서입니다.
 
-```
-Old: [li(1), li(2), li(3)]
-New: [li(2), li(3)]           ← li(1) 삭제
+#### 4) 내부 key 복원 알고리즘
 
-Index 기반 diff:
-  [0]: li(1) → li(2)  → UPDATE 텍스트
-  [1]: li(2) → li(3)  → UPDATE 텍스트
-  [2]: li(3) → 없음   → DELETE
-→ DOM 조작 3회
-```
+현재 프로젝트는 사용자가 `contenteditable` 영역을 직접 수정합니다. 이 과정에서 React처럼 안정적인 `key`가 항상 유지되지 않을 수 있습니다.  
+그래서 `src/keyedVdom.js`에서 내부 추적용 key를 자동 부여하고, 새 편집본이 들어오면 이전 트리와 가장 비슷한 노드에 key를 다시 연결합니다.
 
-### 해결: key 기반
+- `assignInternalKeys()`: 초기 트리에 내부 key 부여
+- `reconcileInternalKeys()`: 이전 트리와 새 트리를 매칭해 key 복원
 
-```
-Old: [li(key=1), li(key=2), li(key=3)]
-New: [li(key=2), li(key=3)]
+이 덕분에 사용자가 key를 직접 관리하지 않아도 key 기반 diff를 계속 활용할 수 있습니다.
 
-Key 기반 diff:
-  key=1 → new에 없음 → DELETE
-  key=2 → 동일 내용  → 패치 없음
-  key=3 → 동일 내용  → 패치 없음
-→ DOM 조작 1회
-```
+#### 5) `MOVE` 패치 추가
 
-### DELETE를 역순으로 먼저 적용하는 이유
+과제 기본 Patch 구조에는 없지만, key 기반 재정렬을 실제 DOM에 더 자연스럽게 반영하기 위해 `MOVE`를 추가했습니다.
 
-```
-Old: [A(idx=0), B(idx=1), C(idx=2)]
-New: [C]  → A, B 삭제
-
-DELETE [1] 먼저, DELETE [0] 나중 (역순) 하면:
-  [1] 삭제 후: [A, C]
-  [0] 삭제 후: [C]  ✅
-
-DELETE [0] 먼저, DELETE [1] 나중 (순서대로) 하면:
-  [0] 삭제 후: [B, C]
-  [1] 삭제 후: [B]  ❌ (C가 아니라 B가 남음)
+```js
+{
+  type: 'MOVE',
+  from: [...path, currentIndex],
+  path: [...path, nextIndex]
+}
 ```
 
-DELETE 패치를 **인덱스 역순**으로 생성해야 이후 패치들의 인덱스가 깨지지 않음.
+이 패치는 "노드를 지우고 새로 만드는" 방식보다 DOM 재사용 측면에서 더 효율적입니다.
 
----
+#### 6) Patch 적용 순서 최적화
+
+key 기반 자식 비교는 패치 적용 순서가 중요합니다. 현재 구현은 아래 순서를 따릅니다.
+
+1. `DELETE`
+2. `MOVE` / `CREATE`
+3. `UPDATE_PROPS` / `TEXT`
+
+이 순서를 지켜야 path가 인덱스 기준이어도 중간 참조가 틀어지지 않습니다.
+
+### 3. 실제 구현의 전체 Diff 흐름
+
+```js
+diff(oldNode, newNode, path = [])
+  1. 둘 다 null -> []
+  2. old만 존재 -> DELETE
+  3. new만 존재 -> CREATE
+  4. 둘 다 텍스트 -> TEXT 또는 []
+  5. 한쪽만 텍스트 -> REPLACE
+  6. type 다름 -> REPLACE
+  7. props 비교 -> UPDATE_PROPS
+  8. children 비교
+     - key 존재 -> diffKeyedChildren()
+     - key 없음 -> diffUnkeyedChildren()
+```
+
+## Patch 적용 방식
+
+`src/patch.js`는 `Patch[]`를 실제 DOM 조작으로 바꾸는 모듈입니다.
+
+- `CREATE`: `insertBefore`
+- `DELETE`: `removeChild`
+- `MOVE`: `insertBefore`
+- `REPLACE`: `replaceChild`
+- `UPDATE_PROPS`: `setAttribute`, `removeAttribute`
+- `TEXT`: `textContent`
+
+핵심은 전체 `innerHTML`을 다시 쓰지 않고, 경로(`path`)를 따라 필요한 노드만 찾아 최소 조작을 수행한다는 점입니다.
 
 ## State History
 
-> 브라우저 뒤로가기/앞으로가기와 동일한 구조. **듀얼 스택**으로 구현.
+히스토리는 dual stack 구조로 구현했습니다.
 
-```
-초기:
-  backStack    = [V0]       forwardStack = []
-
-Patch → V1:
-  backStack    = [V0, V1]   forwardStack = []
-
-뒤로가기:
-  backStack    = [V0]       forwardStack = [V1]   current = V0
-
-앞으로가기:
-  backStack    = [V0, V1]   forwardStack = []     current = V1
-
-뒤로간 상태에서 Patch → V2:
-  backStack    = [V0, V2]   forwardStack = []     ← 앞 히스토리 소멸
+```text
+backStack    = [현재까지의 상태]
+forwardStack = [되돌린 상태]
 ```
 
-**왜 듀얼 스택인가?**
+- `push(vnode)`: 새 상태 저장, `forwardStack` 비움
+- `back()`: 현재 상태를 `forwardStack`으로 옮기고 이전 상태 반환
+- `forward()`: `forwardStack`의 상태를 다시 `backStack`으로 복원
 
-| | 포인터 방식 (스택 1개) | 듀얼 스택 (채택) |
-|---|---|---|
-| 새 상태 추가 | 포인터 뒤 데이터 전체 slice 필요 | forwardStack.length = 0 한 줄 |
-| 이동 구현 | 포인터 ±1 이동 + 경계 처리 | push / pop 만으로 해결 |
-| 직관성 | 현재 위치 계산 필요 | 뒤로가기 스택 / 앞으로가기 스택 명확히 분리 |
+이 구조 덕분에 patch 이후 상태 이동을 단순하게 관리할 수 있습니다.
 
----
+## 브라우저 API 활용
 
-## 브라우저 DOM API
+과제의 중점 포인트에 맞춰 아래 브라우저 API를 직접 사용했습니다.
 
-### Document — 요소 탐색 & 조작
+- `DOMParser`: HTML 문자열 -> DOM 파싱
+- `MutationObserver`: 테스트 영역 변화 감지
+- `childNodes`, `attributes`, `textContent`: DOM 읽기
+- `createElement`, `createTextNode`: 실제 DOM 생성
+- `insertBefore`, `removeChild`, `replaceChild`: Patch 반영
+- `contenteditable`: 테스트 영역 직접 편집
 
-```js
-// 탐색
-document.getElementById('id')
-document.querySelector('.class')       // CSS 선택자, 첫 번째 일치
-document.querySelectorAll('li')        // CSS 선택자, 전체 (NodeList)
+## 프로젝트 구조
 
-// 생성 & 조작
-const el = document.createElement('div')
-el.setAttribute('class', 'box')
-el.removeAttribute('id')
-el.textContent = 'Hello'
-
-parent.appendChild(el)                  // 끝에 추가
-parent.insertBefore(newEl, refEl)       // refEl 앞에 삽입
-parent.removeChild(el)
-parent.replaceChild(newEl, oldEl)
+```text
+.
+├── index.html
+├── style.css
+├── src
+│   ├── vdom.js
+│   ├── diff.js
+│   ├── patch.js
+│   ├── renderer.js
+│   ├── history.js
+│   ├── keyedVdom.js
+│   └── main.js
+├── tests
+│   ├── vdom.test.js
+│   ├── diff.test.js
+│   ├── patch.test.js
+│   ├── renderer.test.js
+│   ├── history.test.js
+│   └── integration.test.js
+└── docs
 ```
-
-### Node 타입
-
-```js
-node.nodeType === 1   // Element  (div, p, span …)
-node.nodeType === 3   // Text     (텍스트 노드)
-
-node.childNodes       // 텍스트·주석 포함 모든 자식
-node.children         // Element 자식만
-node.firstChild       // 첫 자식 (텍스트 포함)
-node.firstElementChild // 첫 Element 자식
-```
-
-### Window
-
-```js
-window.addEventListener('load', fn)            // 모든 리소스 로드 완료
-document.addEventListener('DOMContentLoaded', fn)  // HTML 파싱 완료 (이미지 전)
-window.addEventListener('resize', fn)
-```
-
----
-
-## DOM 변화 감지 API
-
-### MutationObserver
-
-> DOM 트리의 변경 사항을 **비동기적**으로 감지. React의 재조정(Reconciliation)과 비슷한 용도.
-
-```js
-const observer = new MutationObserver((mutations) => {
-  mutations.forEach((m) => {
-    if (m.type === 'childList') {
-      console.log('자식 추가/삭제:', m.addedNodes, m.removedNodes);
-    }
-    if (m.type === 'attributes') {
-      console.log('속성 변경:', m.attributeName, '→', m.target.getAttribute(m.attributeName));
-    }
-    if (m.type === 'characterData') {
-      console.log('텍스트 변경:', m.target.textContent);
-    }
-  });
-});
-
-observer.observe(targetElement, {
-  childList: true,       // 자식 노드 추가·삭제
-  attributes: true,      // 속성 변경
-  subtree: true,         // 하위 트리 전체
-  characterData: true,   // 텍스트 내용 변경
-});
-
-observer.disconnect();   // 감지 중단
-```
-
-### ResizeObserver
-
-> 요소 크기 변화 감지. `window.resize`와 달리 **특정 요소** 단위로 감지.
-
-```js
-const ro = new ResizeObserver((entries) => {
-  entries.forEach((entry) => {
-    const { width, height } = entry.contentRect;
-    console.log(`크기 변경: ${width} x ${height}`);
-  });
-});
-ro.observe(element);
-```
-
-### IntersectionObserver
-
-> 요소가 뷰포트(화면)에 진입/이탈하는 시점 감지. 무한 스크롤, 이미지 지연 로딩 등에 활용.
-
-```js
-const io = new IntersectionObserver((entries) => {
-  entries.forEach((entry) => {
-    if (entry.isIntersecting) {
-      console.log('화면에 보임');
-    }
-  });
-}, { threshold: 0.5 }); // 50% 이상 보일 때 콜백
-
-io.observe(element);
-```
-
----
-
-## 파일 구조
-
-```
-mini-react/
-├── index.html        진입점. <script type="module" src="src/main.js">
-├── style.css         레이아웃 및 스타일
-├── src/
-│   ├── vdom.js       HTML 파싱 + DOM → VNode 변환
-│   ├── history.js    듀얼 스택 히스토리 관리
-│   ├── diff.js       Diff 알고리즘 (VNode 비교 → Patch[])
-│   ├── patch.js      Patch 적용 (Patch[] → 실제 DOM 조작)
-│   ├── renderer.js   VNode → 실제 DOM Element (초기 렌더)
-│   ├── keyedVdom.js  내부 추적 key 부여 및 재조정 (reconcile)
-│   └── main.js       UI 초기화, 이벤트 바인딩
-└── tests/
-    ├── diff.test.js        diffProps + diff 단위 테스트
-    ├── history.test.js     createHistory 단위 테스트
-    ├── vdom.test.js        domToVNode + normalizeTextNode 단위 테스트
-    ├── renderer.test.js    render + vnodeToHTML 단위 테스트
-    ├── patch.test.js       getNodeByPath + applyPatches 단위 테스트
-    └── integration.test.js diff → patch → DOM 통합 테스트
-```
-
----
 
 ## 테스트
 
-### 실행
+핵심 로직은 단위 테스트와 통합 테스트로 검증합니다.
+
+### 단위 테스트
+
+- `vdom`: HTML 파싱, DOM -> VNode 변환
+- `diff`: props 비교, text 비교, type 비교, keyed / unkeyed children
+- `patch`: path 탐색, CREATE / DELETE / MOVE / TEXT / REPLACE
+- `renderer`: VNode -> DOM 변환, HTML 직렬화
+- `history`: push / back / forward / canBack / canForward
+
+### 통합 테스트
+
+- `diff -> applyPatches -> DOM` 전체 흐름
+- History 이동 후 DOM 일치 여부
+- key 기반 자식 재정렬
+- 직렬화 / 재파싱 시 공백 안정성
+
+실행 명령:
 
 ```bash
-npm test               # Vitest (tests/**/*.test.js)
-npm run test:node      # node:test (tests/*.mjs)
-npm run test:all       # 둘 다 순서대로 실행
+npm test
 ```
 
-### 결과 요약
+## 정리
 
-**총 125개 테스트, 6개 파일 — 전부 통과 (0 실패)**
+이 프로젝트는 React의 Diffing 아이디어를 그대로 흉내 내는 데서 멈추지 않고, 실제 브라우저 편집 환경에서 동작하도록 여러 보조 알고리즘까지 확장한 mini-react입니다.
 
-| 파일 | 테스트 수 | 주요 검증 항목 |
-|---|---|---|
-| `diff.test.js` | 32 | diffProps, diff 6케이스, unkeyed/keyed 자식 비교 |
-| `history.test.js` | 20 | push/back/forward/canBack/canForward, 복합 시나리오 |
-| `vdom.test.js` | 15 | domToVNode, 텍스트 정규화, 키 분리, 공백 필터링 |
-| `renderer.test.js` | 21 | render(includeKeyAttribute 옵션 포함), vnodeToHTML 직렬화, HTML 이스케이프 |
-| `patch.test.js` | 17 | getNodeByPath, applyPatches 5가지 패치 타입 |
-| `integration.test.js` | 20 | diff + patch end-to-end, history + DOM, 라운드트립 |
+- React의 기본 Diffing 5유형을 이해할 수 있습니다.
+- `VNode -> Diff -> Patch` 흐름을 직접 추적할 수 있습니다.
+- key, history, DOM 최소 조작이 왜 중요한지 실제로 확인할 수 있습니다.
 
----
+발표에서는 아래 순서로 설명하면 흐름이 가장 자연스럽습니다.
 
-### 모듈별 주요 테스트 케이스 및 예시
-
-#### `diffProps` — props 변경 감지
-
-```js
-// 추가
-diffProps({}, { id: 'new' })
-// → { id: 'new' }
-
-// 삭제 → null 표시
-diffProps({ id: 'x', class: 'y' }, {})
-// → { id: null, class: null }
-
-// 혼합 (추가 + 변경 + 삭제)
-diffProps({ id: 'old', class: 'x', 'data-remove': '1' }, { id: 'new', href: 'url' })
-// → { id: 'new', href: 'url', class: null, 'data-remove': null }
-```
-
----
-
-#### `diff` — VNode 트리 비교 6케이스
-
-```js
-// 둘 다 null → 패치 없음
-diff(null, null) // → []
-
-// oldNode만 null → CREATE
-diff(null, { type: 'div', props: {}, children: [] })
-// → [{ type: 'CREATE', path: [], newNode: { type: 'div', ... } }]
-
-// newNode만 null → DELETE
-diff({ type: 'div', props: {}, children: [] }, null)
-// → [{ type: 'DELETE', path: [] }]
-
-// 다른 텍스트 → TEXT
-diff('hello', 'world')
-// → [{ type: 'TEXT', path: [], text: 'world' }]
-
-// 텍스트 ↔ 엘리먼트 교체 → REPLACE
-diff('text', { type: 'span', props: {}, children: [] })
-// → [{ type: 'REPLACE', path: [], newNode: { type: 'span', ... } }]
-
-// 타입 변경 → REPLACE
-diff({ type: 'div', ... }, { type: 'span', ... })
-// → [{ type: 'REPLACE', path: [], newNode: { type: 'span', ... } }]
-
-// props 변경 → UPDATE_PROPS
-diff({ type: 'div', props: { id: 'a' }, ... }, { type: 'div', props: { id: 'b' }, ... })
-// → [{ type: 'UPDATE_PROPS', path: [], propsDiff: { id: 'b' } }]
-```
-
----
-
-#### `diff` — unkeyed children (인덱스 기반)
-
-```js
-// 자식 전체 삭제 → DELETE는 역순 (index-shift 방지)
-diff(
-  { type: 'ul', props: {}, children: [li('A'), li('B'), li('C')] },
-  { type: 'ul', props: {}, children: [] }
-)
-// → [DELETE[2], DELETE[1], DELETE[0]]   ← 높은 인덱스부터
-//    (정순이면 DELETE[0] 후 'B'가 인덱스 0으로 밀려 잘못된 노드 삭제)
-
-// 자식 추가 → CREATE (뒤에 순서대로)
-diff(
-  { type: 'ul', props: {}, children: [li('A')] },
-  { type: 'ul', props: {}, children: [li('A'), li('B'), li('C')] }
-)
-// → [CREATE path:[1] newNode:li('B'), CREATE path:[2] newNode:li('C')]
-```
-
----
-
-#### `diff` — keyed children (key 기반)
-
-```js
-// 중간 항목 삭제 (key='b')
-diff(
-  { type: 'ul', props: {}, children: [kli('a','A'), kli('b','B'), kli('c','C')] },
-  { type: 'ul', props: {}, children: [kli('a','A'), kli('c','C')] }
-)
-// → [DELETE path:[1]]   ← key='b'의 old index
-
-// DELETE가 CREATE/UPDATE보다 항상 먼저 옴
-// → DOM index 일관성 유지
-```
-
----
-
-#### `domToVNode` — 텍스트 정규화
-
-```js
-// 연속 공백 → 단일 공백
-makeTextNode('hello   world') → 'hello world'
-
-// 공백 전용 → null (필터링)
-makeTextNode('   \n  ') → null
-
-// 앞뒤 공백은 trim하지 않음 (텍스트 컨텍스트 보존)
-makeTextNode('  hello  ') → ' hello '
-
-// key 속성 → props 제외, vnode.key에 저장
-domToVNode(<li key="item-1">text</li>)
-// → { type: 'li', props: {}, children: ['text'], key: 'item-1' }
-```
-
----
-
-#### `vnodeToHTML` — 공백 안전 직렬화
-
-```js
-// 텍스트 + 인라인 엘리먼트 혼합 → 줄바꿈 없음
-//   (줄바꿈이 있으면 parseHTML 후 공백 텍스트 노드 생성 → 불필요한 diff 발생)
-vnodeToHTML({ type: 'p', children: ['Hello ', { type: 'strong', children: ['World'] }, '!'] })
-// → '<p>Hello <strong>World</strong>!</p>'   ← 한 줄
-
-// 블록 엘리먼트 → 들여쓰기
-vnodeToHTML({ type: 'ul', children: [li('A'), li('B')] })
-// → '<ul>\n  <li>A</li>\n  <li>B</li>\n</ul>'
-
-// HTML 특수문자 이스케이프
-vnodeToHTML('<script>') // → '&lt;script&gt;'
-```
-
----
-
-#### `getNodeByPath` + `applyPatches` — DOM 탐색 및 조작
-
-```js
-// path 탐색: rootEl.firstChild → childNodes[i] 순회
-// rootEl = <div><ul><li>A</li><li>B</li></ul></div>
-
-getNodeByPath(root, [])      // → <div> (firstChild)
-getNodeByPath(root, [0])     // → <ul>
-getNodeByPath(root, [0, 0])  // → <li>A</li>
-getNodeByPath(root, [0, 0, 0]) // → TextNode "A"
-getNodeByPath(root, [0, 99]) // → null
-
-// 패치 적용
-applyPatches(root, [{ type: 'TEXT', path: [0, 0, 0], text: 'Updated' }])
-// → <li>A</li> 의 텍스트가 'Updated'로 변경
-```
-
----
-
-#### 통합 시나리오: History + Diff + Patch
-
-```js
-const history = createHistory();
-history.push({ type: 'p', children: ['state1'] });
-history.push({ type: 'p', children: ['state2'] });
-history.push({ type: 'p', children: ['state3'] });
-
-// DOM에 state3 렌더 후
-// back() → state2로 이동, diff → patch → DOM이 'state2'
-// back() → state1로 이동, diff → patch → DOM이 'state1'
-// forward() → state2로 이동, diff → patch → DOM이 'state2'
-// push(state4) → forwardStack 초기화 → canForward() === false
-```
+1. 왜 DOM 직접 조작이 비효율적인가
+2. Virtual DOM을 어떤 구조로 표현했는가
+3. Diff를 React 기본 5유형과 우리 확장 알고리즘으로 어떻게 나눴는가
+4. Patch가 실제 DOM에 어떻게 최소 반영되는가
+5. History와 테스트로 어떻게 검증했는가
