@@ -81,6 +81,34 @@ export function applyPatches(rootEl, patches) {
         targetNode?.parentNode?.removeChild(targetNode);
         break;
 
+      case 'MOVE': {
+        if (!(parentNode instanceof Element || parentNode instanceof DocumentFragment)) {
+          return;
+        }
+
+        const fromPath = patch.from ?? [];
+        const sourceParentNode = getParentByPath(rootEl, fromPath);
+        const sourceIndex = fromPath[fromPath.length - 1];
+
+        if (!(sourceParentNode instanceof Element || sourceParentNode instanceof DocumentFragment)) {
+          return;
+        }
+
+        const movingNode = sourceParentNode.childNodes[sourceIndex] ?? null;
+
+        if (!movingNode || sourceParentNode !== parentNode) {
+          return;
+        }
+
+        const referenceNode =
+          sourceIndex < childIndex
+            ? parentNode.childNodes[childIndex + 1] ?? null
+            : parentNode.childNodes[childIndex] ?? null;
+
+        parentNode.insertBefore(movingNode, referenceNode);
+        break;
+      }
+
       case 'REPLACE': {
         if (!targetNode?.parentNode) {
           return;

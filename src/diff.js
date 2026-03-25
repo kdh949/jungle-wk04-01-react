@@ -7,13 +7,14 @@
  */
 
 /**
- * @typedef {'CREATE' | 'DELETE' | 'REPLACE' | 'UPDATE_PROPS' | 'TEXT'} PatchType
+ * @typedef {'CREATE' | 'DELETE' | 'MOVE' | 'REPLACE' | 'UPDATE_PROPS' | 'TEXT'} PatchType
  */
 
 /**
  * @typedef {Object} Patch
  * @property {PatchType} type
  * @property {number[]} path
+ * @property {number[]} [from]
  * @property {VNode} [newNode]
  * @property {Object.<string, string|null>} [propsDiff]
  * @property {string} [text]
@@ -75,10 +76,11 @@ function hasAnyKey(children) {
  */
 function diffKeyedChildren(oldChildren, newChildren, path) {
   const deletionPatches = [];
+  const moveAndCreatePatches = [];
   const updatePatches = [];
 
   // key가 있으면 "같은 위치"보다 "같은 아이템"인지 먼저 찾습니다.
-  // 그래서 reorder나 중간 삽입에도 비교 대상이 덜 흔들립니다.
+  // 그래서 reorder나 중간 삽입도 MOVE로 표현할 수 있습니다.
   const oldKeyedMap = new Map();
   oldChildren.forEach((child, i) => {
     if (child && typeof child !== 'string' && child.key != null) {
@@ -106,31 +108,58 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
       deletionPatches.push({ type: 'DELETE', path: [...path, i] });
     });
 
-  // 그다음 새 목록 순서대로 매칭하면서 내용 diff 또는 CREATE를 만듭니다.
+  // DELETE를 적용한 뒤 자식 목록이 어떻게 보일지 시뮬레이션해서
+  // 이동과 생성을 새 인덱스 기준으로 계산합니다.
+  const simulatedChildren = oldChildren.filter((child) => {
+    if (!child || typeof child === 'string' || child.key == null) {
+      return true;
+    }
+
+    return newKeySet.has(child.key);
+  });
+
+  const moveChild = (fromIndex, toIndex) => {
+    const [movedChild] = simulatedChildren.splice(fromIndex, 1);
+    simulatedChildren.splice(toIndex, 0, movedChild);
+  };
+
   newChildren.forEach((newChild, i) => {
     const newKey =
       newChild && typeof newChild !== 'string' ? newChild.key : undefined;
 
     if (newKey != null) {
-      const oldEntry = oldKeyedMap.get(newKey);
-      if (oldEntry) {
-        // 같은 key라면 "같은 아이템의 새 버전"으로 보고 재귀 diff 합니다.
-        updatePatches.push(...diff(oldEntry.vnode, newChild, [...path, i]));
+      const currentIndex = simulatedChildren.findIndex((child) => (
+        child && typeof child !== 'string' && child.key === newKey
+      ));
+
+      if (currentIndex !== -1) {
+        if (currentIndex !== i) {
+          moveAndCreatePatches.push({
+            type: 'MOVE',
+            from: [...path, currentIndex],
+            path: [...path, i],
+          });
+          moveChild(currentIndex, i);
+        }
+
+        // MOVE 이후의 새 인덱스 기준으로 내용을 재귀 비교합니다.
+        updatePatches.push(...diff(simulatedChildren[i], newChild, [...path, i]));
       } else {
         // 새 key → CREATE
-        updatePatches.push({ type: 'CREATE', path: [...path, i], newNode: newChild });
+        moveAndCreatePatches.push({ type: 'CREATE', path: [...path, i], newNode: newChild });
+        simulatedChildren.splice(i, 0, newChild);
       }
     } else {
       // key 없음 → index 기반 폴백
       updatePatches.push(
-        ...diff(oldChildren[i] ?? null, newChild, [...path, i]),
+        ...diff(simulatedChildren[i] ?? null, newChild, [...path, i]),
       );
     }
   });
 
   // 실제 patch 적용 시에는 path가 인덱스 기반이라,
-  // DELETE를 먼저 처리해야 뒤쪽 노드 참조가 어긋나지 않습니다.
-  return [...deletionPatches, ...updatePatches];
+  // DELETE를 먼저 처리한 뒤 MOVE/CREATE, 마지막으로 내용을 갱신해야 참조가 어긋나지 않습니다.
+  return [...deletionPatches, ...moveAndCreatePatches, ...updatePatches];
 }
 
 /**

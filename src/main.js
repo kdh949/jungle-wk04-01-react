@@ -78,6 +78,8 @@ const getPatchActionText = (patch) => {
       return `${describeVNode(patch.newNode)} 노드를 새로 추가합니다.`;
     case 'DELETE':
       return '해당 노드를 삭제합니다.';
+    case 'MOVE':
+      return '같은 노드를 유지한 채 순서만 이동합니다.';
     case 'UPDATE_PROPS':
       return '태그는 유지하고 속성만 수정합니다.';
     default:
@@ -108,6 +110,8 @@ const getPatchMetaText = (patch, oldVNode) => {
       return `수정된 태그: ${beforeTag}, 내부 텍스트 -> "${patch.text ?? ''}"`;
     case 'DELETE':
       return `수정된 태그: ${beforeTag}`;
+    case 'MOVE':
+      return `수정된 태그: ${beforeTag}, 기존 노드를 새 순서로 이동`;
     default:
       return '';
   }

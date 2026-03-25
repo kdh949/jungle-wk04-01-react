@@ -73,9 +73,25 @@ const reconcileChildren = (oldChildren = [], newChildren = [], createKey) => {
     index,
     signature: getElementSignature(child),
   }));
+  const newSignatureCounts = new Map();
+
+  newChildren.forEach((child) => {
+    if (!isElementVNode(child)) {
+      return;
+    }
+
+    const signature = getElementSignature(child);
+    newSignatureCounts.set(signature, (newSignatureCounts.get(signature) ?? 0) + 1);
+  });
 
   const findBestExactMatch = (newChild, newIndex) => {
     const newSignature = getElementSignature(newChild);
+
+    // 같은 내용이 여러 번 반복되면 어느 노드를 옮겨온 건지 애매하므로
+    // exact match보다 현재 자리 유지가 더 자연스럽습니다.
+    if ((newSignatureCounts.get(newSignature) ?? 0) > 1) {
+      return null;
+    }
 
     // 가장 먼저 "내용까지 같은 노드"를 찾습니다.
     return oldCandidates

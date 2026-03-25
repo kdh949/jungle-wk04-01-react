@@ -147,3 +147,56 @@ test('diff returns child DELETE patches in reverse order for unkeyed removals', 
     { type: 'DELETE', path: [0] },
   ]);
 });
+
+test('diff returns MOVE when keyed children reorder', () => {
+  const oldNode = {
+    type: 'ul',
+    props: {},
+    children: [
+      { type: 'li', props: {}, children: ['A'], key: 'a' },
+      { type: 'li', props: {}, children: ['B'], key: 'b' },
+      { type: 'li', props: {}, children: ['C'], key: 'c' },
+    ],
+  };
+
+  const newNode = {
+    type: 'ul',
+    props: {},
+    children: [
+      { type: 'li', props: {}, children: ['B'], key: 'b' },
+      { type: 'li', props: {}, children: ['A'], key: 'a' },
+      { type: 'li', props: {}, children: ['C'], key: 'c' },
+    ],
+  };
+
+  assert.deepEqual(diff(oldNode, newNode), [
+    { type: 'MOVE', from: [1], path: [0] },
+  ]);
+});
+
+test('diff returns MOVE and TEXT when a keyed child moves and its text changes', () => {
+  const oldNode = {
+    type: 'ul',
+    props: {},
+    children: [
+      { type: 'li', props: {}, children: ['A'], key: 'a' },
+      { type: 'li', props: {}, children: ['B'], key: 'b' },
+      { type: 'li', props: {}, children: ['C'], key: 'c' },
+    ],
+  };
+
+  const newNode = {
+    type: 'ul',
+    props: {},
+    children: [
+      { type: 'li', props: {}, children: ['B updated'], key: 'b' },
+      { type: 'li', props: {}, children: ['A'], key: 'a' },
+      { type: 'li', props: {}, children: ['C'], key: 'c' },
+    ],
+  };
+
+  assert.deepEqual(diff(oldNode, newNode), [
+    { type: 'MOVE', from: [1], path: [0] },
+    { type: 'TEXT', path: [0, 0], text: 'B updated' },
+  ]);
+});

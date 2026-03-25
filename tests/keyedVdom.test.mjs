@@ -85,3 +85,69 @@ test('reconcileInternalKeys keeps the same key for same-index text edits', () =>
   assert.equal(reconciledVNode.children[0].key, 'item-1');
   assert.equal(reconciledVNode.children[1].key, 'item-2');
 });
+
+test('reconcileInternalKeys keeps keys when siblings are reordered', () => {
+  let seed = 300;
+  const createKey = () => `node-${++seed}`;
+
+  const previousVNode = {
+    type: 'ul',
+    props: {},
+    key: 'list-root',
+    children: [
+      { type: 'li', props: {}, children: ['Item 1'], key: 'item-1' },
+      { type: 'li', props: {}, children: ['Item 2'], key: 'item-2' },
+      { type: 'li', props: {}, children: ['Item 3'], key: 'item-3' },
+    ],
+  };
+
+  const editedVNode = {
+    type: 'ul',
+    props: {},
+    children: [
+      { type: 'li', props: {}, children: ['Item 3'] },
+      { type: 'li', props: {}, children: ['Item 1'] },
+      { type: 'li', props: {}, children: ['Item 2'] },
+    ],
+  };
+
+  const reconciledVNode = reconcileInternalKeys(previousVNode, editedVNode, createKey);
+
+  assert.deepEqual(
+    reconciledVNode.children.map((child) => child.key),
+    ['item-3', 'item-1', 'item-2'],
+  );
+});
+
+test('reconcileInternalKeys prefers same-index keys when duplicate content makes matches ambiguous', () => {
+  let seed = 400;
+  const createKey = () => `node-${++seed}`;
+
+  const previousVNode = {
+    type: 'ul',
+    props: {},
+    key: 'list-root',
+    children: [
+      { type: 'li', props: {}, children: ['Item 1'], key: 'item-1' },
+      { type: 'li', props: {}, children: ['Item 2'], key: 'item-2' },
+      { type: 'li', props: {}, children: ['Item 3'], key: 'item-3' },
+    ],
+  };
+
+  const editedVNode = {
+    type: 'ul',
+    props: {},
+    children: [
+      { type: 'li', props: {}, children: ['Item 2'] },
+      { type: 'li', props: {}, children: ['Item 2'] },
+      { type: 'li', props: {}, children: ['Item 2'] },
+    ],
+  };
+
+  const reconciledVNode = reconcileInternalKeys(previousVNode, editedVNode, createKey);
+
+  assert.deepEqual(
+    reconciledVNode.children.map((child) => child.key),
+    ['item-1', 'item-2', 'item-3'],
+  );
+});
