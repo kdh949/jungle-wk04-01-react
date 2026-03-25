@@ -75,7 +75,6 @@ function hasAnyKey(children) {
  */
 function diffKeyedChildren(oldChildren, newChildren, path) {
   const deletionPatches = [];
-  const updatePatches = [];
 
   // key가 있으면 "같은 위치"보다 "같은 아이템"인지 먼저 찾습니다.
   // 그래서 reorder나 중간 삽입에도 비교 대상이 덜 흔들립니다.
@@ -106,31 +105,23 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
       deletionPatches.push({ type: 'DELETE', path: [...path, i] });
     });
 
-  // 그다음 새 목록 순서대로 매칭하면서 내용 diff 또는 CREATE를 만듭니다.
-  newChildren.forEach((newChild, i) => {
-    const newKey =
-      newChild && typeof newChild !== 'string' ? newChild.key : undefined;
+  // 삭제 후 남는 old 자식만 남겨 두면 이후 path는 "삭제가 반영된 현재 DOM" 기준이 됩니다.
+  const deletedIndexSet = new Set(indicesToDelete);
+  const remainingOldChildren = oldChildren.filter(
+    (_, index) => !deletedIndexSet.has(index),
+  );
 
-    if (newKey != null) {
-      const oldEntry = oldKeyedMap.get(newKey);
-      if (oldEntry) {
-        // 같은 key라면 "같은 아이템의 새 버전"으로 보고 재귀 diff 합니다.
-        updatePatches.push(...diff(oldEntry.vnode, newChild, [...path, i]));
-      } else {
-        // 새 key → CREATE
-        updatePatches.push({ type: 'CREATE', path: [...path, i], newNode: newChild });
-      }
-    } else {
-      // key 없음 → index 기반 폴백
-      updatePatches.push(
-        ...diff(oldChildren[i] ?? null, newChild, [...path, i]),
-      );
-    }
-  });
+  // key 존재 여부는 membership 보존에만 사용하고, 실제 위치 정렬은 삭제 이후 index 기준으로 비교합니다.
+  // 이렇게 하면 reorder도 REPLACE/CREATE/DELETE 조합으로 안전하게 반영할 수 있습니다.
+  const reorderAwarePatches = diffUnkeyedChildren(
+    remainingOldChildren,
+    newChildren,
+    path,
+  );
 
   // 실제 patch 적용 시에는 path가 인덱스 기반이라,
   // DELETE를 먼저 처리해야 뒤쪽 노드 참조가 어긋나지 않습니다.
-  return [...deletionPatches, ...updatePatches];
+  return [...deletionPatches, ...reorderAwarePatches];
 }
 
 /**
@@ -220,6 +211,13 @@ export function diff(oldNode, newNode, path = []) {
 
   // 태그 이름이 달라지면 자식 비교 대신 노드 전체 교체가 더 단순합니다.
   if (oldNode.type !== newNode.type) {
+    patches.push({ type: 'REPLACE', path, newNode });
+    return patches;
+  }
+
+  // key는 DOM attribute로 렌더되지 않아도 VDOM identity를 표현하므로,
+  // 같은 위치의 key가 달라졌다면 새 노드로 교체해야 reorder가 안전하게 반영됩니다.
+  if (oldNode.key !== newNode.key) {
     patches.push({ type: 'REPLACE', path, newNode });
     return patches;
   }

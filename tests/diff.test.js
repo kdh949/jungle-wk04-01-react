@@ -250,6 +250,17 @@ describe('diff — keyed children', () => {
     expect(patches.filter((p) => p.type === 'DELETE')).toHaveLength(3);
     expect(patches.filter((p) => p.type === 'CREATE')).toHaveLength(3);
   });
+
+  it('순서만 바뀐 keyed 자식도 REPLACE로 반영', () => {
+    const old = { type: 'ul', props: {}, children: [kli('a', 'A'), kli('b', 'B')] };
+    const next = { type: 'ul', props: {}, children: [kli('b', 'B'), kli('a', 'A')] };
+    const patches = diff(old, next);
+
+    expect(patches).toEqual([
+      { type: 'REPLACE', path: [0], newNode: next.children[0] },
+      { type: 'REPLACE', path: [1], newNode: next.children[1] },
+    ]);
+  });
 });
 
 // ──────────────────────────────────────────────

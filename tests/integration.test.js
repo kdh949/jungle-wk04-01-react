@@ -160,6 +160,17 @@ describe('통합: keyed 자식', () => {
     expect(items.length).toBe(1);
     expect(items[0].textContent).toBe('D');
   });
+
+  it('순서만 바뀐 keyed 자식도 실제 DOM 순서를 갱신', () => {
+    const root = applyDiff(
+      ul([kli('a', 'A'), kli('b', 'B')]),
+      ul([kli('b', 'B'), kli('a', 'A')]),
+    );
+    const items = root.querySelectorAll('li');
+    expect(items).toHaveLength(2);
+    expect(items[0].textContent).toBe('B');
+    expect(items[1].textContent).toBe('A');
+  });
 });
 
 // ──────────────────────────────────────────────

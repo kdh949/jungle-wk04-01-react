@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { domToVNode } from '../src/vdom.js';
+import { parseHTML, domToVNode } from '../src/vdom.js';
 
 // parseHTML은 브라우저 DOMParser가 필요한데 jsdom에서는 지원하지 않으므로
 // domToVNode만 직접 테스트합니다.
@@ -115,5 +115,39 @@ describe('domToVNode', () => {
     expect(vnode.type).toBe('br');
     expect(vnode.props).toEqual({});
     expect(vnode.children).toEqual([]);
+  });
+});
+
+describe('parseHTML', () => {
+  it('단일 루트 요소는 그대로 반환', () => {
+    expect(parseHTML('<section id="root"><p>Hello</p></section>')).toEqual({
+      type: 'section',
+      props: { id: 'root' },
+      children: [
+        { type: 'p', props: {}, children: ['Hello'], key: undefined },
+      ],
+      key: undefined,
+    });
+  });
+
+  it('여러 루트 요소는 div로 감싼다', () => {
+    expect(parseHTML('<p>A</p><p>B</p>')).toEqual({
+      type: 'div',
+      props: {},
+      children: [
+        { type: 'p', props: {}, children: ['A'], key: undefined },
+        { type: 'p', props: {}, children: ['B'], key: undefined },
+      ],
+      key: undefined,
+    });
+  });
+
+  it('텍스트만 있는 입력도 div 래퍼 안에 보존', () => {
+    expect(parseHTML('hello')).toEqual({
+      type: 'div',
+      props: {},
+      children: ['hello'],
+      key: undefined,
+    });
   });
 });
