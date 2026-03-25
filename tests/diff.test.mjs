@@ -123,3 +123,27 @@ test('diff accumulates prop and child patches recursively', () => {
     },
   ]);
 });
+
+test('diff returns child DELETE patches in reverse order for unkeyed removals', () => {
+  const oldNode = {
+    type: 'div',
+    props: {},
+    children: [
+      { type: 'h1', props: {}, children: ['Title'] },
+      { type: 'ul', props: {}, children: ['Items'] },
+      { type: 'p', props: {}, children: ['Description'] },
+    ],
+  };
+
+  const newNode = {
+    type: 'div',
+    props: {},
+    children: [],
+  };
+
+  assert.deepEqual(diff(oldNode, newNode), [
+    { type: 'DELETE', path: [2] },
+    { type: 'DELETE', path: [1] },
+    { type: 'DELETE', path: [0] },
+  ]);
+});
