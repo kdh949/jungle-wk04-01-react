@@ -93,10 +93,11 @@ function createVNode(type, props, children, key) {
  */
 function normalizeTextNode(textNode) {
   const value = textNode.textContent ?? '';
+  const normalizedValue = value.replace(/\s+/g, ' ');
 
-  if (value.trim() === '') {
+  if (normalizedValue.trim() === '') {
     return null;
   }
 
-  return value;
+  return normalizedValue;
 }

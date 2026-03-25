@@ -1,5 +1,5 @@
 /**
- * VNode¸¦ ½ÇÁ¦ DOM Element·Î º¯È¯ÇÕ´Ï´Ù (ÃÊ±â ·»´õ¸µ¿ë).
+ * VNodeë¥¼ ì‹¤ì œ DOM Elementë¡œ ë³€í™˜í•©ë‹ˆë‹¤ (ì´ˆê¸° ë Œë”ë§ìš©).
  *
  * @param {Object|string} vnode
  * @returns {Element|Text}
@@ -27,18 +27,19 @@ export function render(vnode) {
 }
 
 /**
- * VNode¸¦ »ç¶÷ÀÌ ÀÐ±â ½¬¿î HTML ¹®ÀÚ¿­·Î Á÷·ÄÈ­ÇÕ´Ï´Ù.
+ * VNodeë¥¼ ì‚¬ëžŒì´ ì½ê¸° ì‰¬ìš´ HTML ë¬¸ìžì—´ë¡œ ì§ë ¬í™”í•©ë‹ˆë‹¤.
  *
  * @param {Object|string} vnode
  * @param {number} [depth=0]
+ * @param {boolean} [compact=false]
  * @returns {string}
  */
-export function vnodeToHTML(vnode, depth = 0) {
+export function vnodeToHTML(vnode, depth = 0, compact = false) {
   if (typeof vnode === 'string') {
-    return `${'  '.repeat(depth)}${escapeHTML(vnode)}`;
+    return compact ? escapeHTML(vnode) : `${'  '.repeat(depth)}${escapeHTML(vnode)}`;
   }
 
-  const indent = '  '.repeat(depth);
+  const indent = compact ? '' : '  '.repeat(depth);
   const props = { ...(vnode.props ?? {}) };
 
   if (vnode.key != null) {
@@ -54,14 +55,32 @@ export function vnodeToHTML(vnode, depth = 0) {
   }
 
   const onlyTextChildren = vnode.children.every((child) => typeof child === 'string');
+  const hasTextChild = vnode.children.some((child) => typeof child === 'string');
+  const canInlineMixedChildren = vnode.children.every((child) => {
+    if (typeof child === 'string') {
+      return true;
+    }
+
+    return isInlineTag(child.type);
+  });
 
   if (onlyTextChildren) {
     const textContent = vnode.children.map((child) => escapeHTML(child)).join('');
     return `${indent}<${vnode.type}${attributes}>${textContent}</${vnode.type}>`;
   }
 
+  // TextNodeì™€ inline elementê°€ ì„žì¸ ê²½ìš° ì¤„ë°”ê¿ˆì„ ë„£ìœ¼ë©´
+  // textarea -> parseHTML -> patch ê³¼ì •ì—ì„œ ê³µë°± í…ìŠ¤íŠ¸ê°€ ìƒˆë¡œ ìƒê¹ë‹ˆë‹¤.
+  if (compact || (hasTextChild && canInlineMixedChildren)) {
+    const childrenHTML = vnode.children
+      .map((child) => vnodeToHTML(child, 0, true))
+      .join('');
+
+    return `${indent}<${vnode.type}${attributes}>${childrenHTML}</${vnode.type}>`;
+  }
+
   const childrenHTML = vnode.children
-    .map((child) => vnodeToHTML(child, depth + 1))
+    .map((child) => vnodeToHTML(child, depth + 1, false))
     .join('\n');
 
   return `${indent}<${vnode.type}${attributes}>\n${childrenHTML}\n${indent}</${vnode.type}>`;
@@ -73,4 +92,37 @@ function escapeHTML(value) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+function isInlineTag(tagName) {
+  return new Set([
+    'a',
+    'abbr',
+    'b',
+    'bdi',
+    'bdo',
+    'br',
+    'cite',
+    'code',
+    'data',
+    'dfn',
+    'em',
+    'i',
+    'img',
+    'kbd',
+    'label',
+    'mark',
+    'q',
+    's',
+    'samp',
+    'small',
+    'span',
+    'strong',
+    'sub',
+    'sup',
+    'time',
+    'u',
+    'var',
+    'wbr',
+  ]).has(tagName);
 }

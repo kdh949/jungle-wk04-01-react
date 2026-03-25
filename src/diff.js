@@ -130,6 +130,42 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
 }
 
 /**
+ * key가 없는 자식 노드 목록을 index 기반으로 비교합니다.
+ *
+ * 공통 구간은 앞에서부터 재귀 비교하고,
+ * 삭제가 필요한 자식은 뒤에서부터 DELETE 패치를 만들어 인덱스 밀림을 방지합니다.
+ *
+ * @param {Array.<VNode|string>} oldChildren
+ * @param {Array.<VNode|string>} newChildren
+ * @param {number[]} path
+ * @returns {Patch[]}
+ */
+function diffUnkeyedChildren(oldChildren, newChildren, path) {
+  const patches = [];
+  const sharedLength = Math.min(oldChildren.length, newChildren.length);
+
+  for (let index = 0; index < sharedLength; index += 1) {
+    patches.push(
+      ...diff(oldChildren[index], newChildren[index], [...path, index]),
+    );
+  }
+
+  for (let index = oldChildren.length - 1; index >= sharedLength; index -= 1) {
+    patches.push({ type: 'DELETE', path: [...path, index] });
+  }
+
+  for (let index = sharedLength; index < newChildren.length; index += 1) {
+    patches.push({
+      type: 'CREATE',
+      path: [...path, index],
+      newNode: newChildren[index],
+    });
+  }
+
+  return patches;
+}
+
+/**
  * 두 VNode 트리를 비교하여 변경 사항(Patch) 목록을 반환합니다.
  *
  * @param {VNode|string|null} oldNode
@@ -185,20 +221,7 @@ export function diff(oldNode, newNode, path = []) {
   if (hasAnyKey(oldNode.children) || hasAnyKey(newNode.children)) {
     patches.push(...diffKeyedChildren(oldNode.children, newNode.children, path));
   } else {
-    const maxChildrenLength = Math.max(
-      oldNode.children.length,
-      newNode.children.length,
-    );
-
-    for (let index = 0; index < maxChildrenLength; index += 1) {
-      patches.push(
-        ...diff(
-          oldNode.children[index] ?? null,
-          newNode.children[index] ?? null,
-          [...path, index],
-        ),
-      );
-    }
+    patches.push(...diffUnkeyedChildren(oldNode.children, newNode.children, path));
   }
 
   return patches;
