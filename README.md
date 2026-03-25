@@ -44,17 +44,20 @@ npx live-server .
 
 ```
 페이지 로드
-  └─ 실제 영역 DOM → VNode 변환 → 테스트 영역(textarea)에 HTML 표시
+  └─ editor-surface innerHTML → VNode 변환 → 히스토리 초기화 + preview 렌더
 
-[Patch 버튼 클릭]
-  └─ textarea HTML → 새 VNode
-       └─ diff(이전 VNode, 새 VNode) → Patch[]
-            └─ applyPatches(실제 영역, Patch[]) → 최소 DOM 업데이트
-                 └─ history.push(새 VNode)
+[에디터 수정 (Live Sync 켜짐)]
+  └─ MutationObserver 감지 → 180ms debounce → commitEditorChanges()
+       └─ editor-surface innerHTML → 새 VNode (내부 key 재조정)
+            └─ diff(이전 VNode, 새 VNode) → Patch[]
+                 └─ applyPatches(preview 영역, Patch[]) → 최소 DOM 업데이트
+                      └─ history.push(새 VNode)
+
+[Patch 버튼 클릭 (Live Sync 꺼짐)]
+  └─ editor-surface innerHTML → 새 VNode → diff → applyPatches → history.push
 
 [뒤로가기 / 앞으로가기]
-  └─ history.back() / forward() → 해당 VNode로 실제 영역 재렌더
-       └─ 테스트 영역도 함께 동기화
+  └─ history.back() / forward() → 해당 VNode로 preview + editor 재렌더
 ```
 
 ---
@@ -290,24 +293,31 @@ if (Object.keys(propsDiff).length > 0) {
 if (hasAnyKey(oldNode.children) || hasAnyKey(newNode.children)) {
   patches.push(...diffKeyedChildren(oldNode.children, newNode.children, path));
 } else {
-  const maxChildrenLength = Math.max(
-    oldNode.children.length,
-    newNode.children.length,
-  );
-
-  for (let index = 0; index < maxChildrenLength; index += 1) {
-    patches.push(
-      ...diff(
-        oldNode.children[index] ?? null,  // 없으면 null → Case 2/3로 처리
-        newNode.children[index] ?? null,
-        [...path, index],                 // 경로에 자식 인덱스 추가
-      ),
-    );
-  }
+  patches.push(...diffUnkeyedChildren(oldNode.children, newNode.children, path));
 }
 ```
 
-자식 개수가 다를 때 `?? null`로 채워서 Case 2(DELETE) 또는 Case 3(CREATE)이 자연스럽게 처리되게 함.
+`diffUnkeyedChildren`은 공통 구간은 앞에서부터 재귀 비교하고, 삭제가 필요한 자식은 **뒤에서부터(역순)** DELETE 패치를 생성해 인덱스 밀림을 방지한다.
+
+```js
+// src/diff.js — diffUnkeyedChildren 핵심 구조
+const sharedLength = Math.min(oldChildren.length, newChildren.length);
+
+// 1) 공통 구간: index 순서대로 재귀 diff
+for (let index = 0; index < sharedLength; index += 1) {
+  patches.push(...diff(oldChildren[index], newChildren[index], [...path, index]));
+}
+
+// 2) old가 더 길면: 높은 인덱스부터 DELETE (역순 → index 불변)
+for (let index = oldChildren.length - 1; index >= sharedLength; index -= 1) {
+  patches.push({ type: 'DELETE', path: [...path, index] });
+}
+
+// 3) new가 더 길면: CREATE
+for (let index = sharedLength; index < newChildren.length; index += 1) {
+  patches.push({ type: 'CREATE', path: [...path, index], newNode: newChildren[index] });
+}
+```
 
 ---
 
@@ -533,6 +543,7 @@ mini-react/
 │   ├── diff.js       Diff 알고리즘 (VNode 비교 → Patch[])
 │   ├── patch.js      Patch 적용 (Patch[] → 실제 DOM 조작)
 │   ├── renderer.js   VNode → 실제 DOM Element (초기 렌더)
+│   ├── keyedVdom.js  내부 추적 key 부여 및 재조정 (reconcile)
 │   └── main.js       UI 초기화, 이벤트 바인딩
 └── tests/
     ├── diff.test.js        diffProps + diff 단위 테스트
@@ -557,14 +568,14 @@ npm run test:all       # 둘 다 순서대로 실행
 
 ### 결과 요약
 
-**총 124개 테스트, 6개 파일 — 전부 통과 (0 실패)**
+**총 125개 테스트, 6개 파일 — 전부 통과 (0 실패)**
 
 | 파일 | 테스트 수 | 주요 검증 항목 |
 |---|---|---|
 | `diff.test.js` | 32 | diffProps, diff 6케이스, unkeyed/keyed 자식 비교 |
 | `history.test.js` | 20 | push/back/forward/canBack/canForward, 복합 시나리오 |
 | `vdom.test.js` | 15 | domToVNode, 텍스트 정규화, 키 분리, 공백 필터링 |
-| `renderer.test.js` | 20 | render, vnodeToHTML 직렬화, HTML 이스케이프 |
+| `renderer.test.js` | 21 | render(includeKeyAttribute 옵션 포함), vnodeToHTML 직렬화, HTML 이스케이프 |
 | `patch.test.js` | 17 | getNodeByPath, applyPatches 5가지 패치 타입 |
 | `integration.test.js` | 20 | diff + patch end-to-end, history + DOM, 라운드트립 |
 
