@@ -55,6 +55,8 @@ const describeVNode = (vnode) => {
 const getNodeAtPath = (vnode, path) => {
   let currentNode = vnode;
 
+  // patch.path는 DOM 기준 인덱스 경로이므로,
+  // inspector에서도 같은 규칙으로 VNode를 따라가며 대상 노드를 찾습니다.
   for (const index of path) {
     if (typeof currentNode === 'string' || currentNode == null) {
       return null;
@@ -149,6 +151,7 @@ const renderPatchInspector = (
     if (patchMetaText) {
       const metaEl = document.createElement('div');
       metaEl.className = 'patch-detail';
+      // innerHTML을 쓰면 <p> 같은 태그 문자열이 실제 태그로 해석될 수 있어 textContent를 씁니다.
       metaEl.textContent = `세부값: ${patchMetaText}`;
       itemEl.appendChild(metaEl);
     }
@@ -169,6 +172,7 @@ const updateSyncStatusLabel = (fallbackLabel) => {
     return;
   }
 
+  // 수동 모드에서는 "적용 안 된 편집본이 남아 있는지"를 우선 보여줍니다.
   setSyncState(hasPendingChanges ? 'Manual Draft' : 'Manual Ready');
 };
 
@@ -190,6 +194,8 @@ const ensureEditorObserver = () => {
     return;
   }
 
+  // contenteditable은 input 이벤트만으로는 브라우저별 차이가 있어,
+  // 실제 DOM 변경도 함께 감시합니다.
   editorObserver = new MutationObserver(() => {
     scheduleSync();
   });
@@ -212,6 +218,7 @@ const syncEditorFromVNode = (vnode) => {
   isProgrammaticEditorUpdate = true;
   stopEditorObserver();
   editorSurfaceEl.innerHTML = '';
+  // editor에는 key를 숨긴 버전을 보여서 사용자가 내부 추적 key를 직접 건드리지 않게 합니다.
   editorSurfaceEl.appendChild(render(stripKeysFromVNode(vnode), { includeKeyAttribute: false }));
   startEditorObserver();
   isProgrammaticEditorUpdate = false;
@@ -230,6 +237,8 @@ const commitEditorChanges = () => {
       return;
     }
 
+    // 사용자가 편집한 DOM을 다시 keyless VDOM으로 만든 뒤,
+    // 이전 keyed VDOM과 매칭해 내부 key를 복원합니다.
     const parsedVNode = stripKeysFromVNode(parseHTML(editorSurfaceEl.innerHTML));
     const newVNode = reconcileInternalKeys(oldVNode, parsedVNode, createInternalKey);
     const patches = diff(oldVNode, newVNode);
@@ -243,6 +252,7 @@ const commitEditorChanges = () => {
     }
 
     applyPatches(previewAreaEl, patches);
+    // diff/patch가 끝난 새 VDOM이 다음 비교의 기준점이 됩니다.
     history.push(newVNode);
     hasPendingChanges = false;
     updateButtonState();
@@ -264,6 +274,7 @@ const scheduleSync = () => {
   updateButtonState();
 
   if (!isLiveSyncEnabled) {
+    // 수동 모드에서는 편집만 표시하고 실제 patch는 버튼 클릭까지 보류합니다.
     setSyncState('Manual Draft');
     return;
   }
@@ -275,6 +286,8 @@ const scheduleSync = () => {
 };
 
 const initialize = () => {
+  // 초기 editor HTML을 VDOM으로 읽을 때부터 내부 key를 붙여둬야
+  // 이후 편집본과 비교할 때 key 기반 diff를 계속 유지할 수 있습니다.
   const initialVNode = assignInternalKeys(parseHTML(editorSurfaceEl.innerHTML), createInternalKey);
 
   if (initialVNode == null || typeof initialVNode === 'string') {
@@ -300,6 +313,7 @@ patchBtnEl.addEventListener('click', () => {
     return;
   }
 
+  // 수동 모드에서만 강제로 현재 편집본을 diff/patch 합니다.
   window.clearTimeout(syncTimerId);
   commitEditorChanges();
 });
@@ -311,6 +325,7 @@ liveSyncToggleEl.addEventListener('change', () => {
 
   if (isLiveSyncEnabled) {
     if (hasPendingChanges) {
+      // 수동 모드에서 쌓여 있던 draft가 있으면 토글을 켜는 즉시 한 번 반영합니다.
       setSyncState('Syncing...');
       commitEditorChanges();
       return;
@@ -355,6 +370,7 @@ forwardBtnEl.addEventListener('click', () => {
 
 const loadDependencies = async () => {
   try {
+    // diff, history, vdom은 브라우저 로드 완료 후 동적으로 가져옵니다.
     const [{ diff: diffModule }, { createHistory: createHistoryModule }, vdomModule] =
       await Promise.all([
         import('./diff.js'),

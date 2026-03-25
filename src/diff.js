@@ -29,12 +29,14 @@
 export function diffProps(oldProps = {}, newProps = {}) {
   const propsDiff = {};
 
+  // 새 props에 있는 값이 달라졌다면 추가/변경으로 기록합니다.
   Object.keys(newProps).forEach((key) => {
     if (oldProps[key] !== newProps[key]) {
       propsDiff[key] = newProps[key];
     }
   });
 
+  // 이전에는 있었지만 새 props에는 없는 값은 null로 표시해 제거를 의미합니다.
   Object.keys(oldProps).forEach((key) => {
     if (!(key in newProps)) {
       propsDiff[key] = null;
@@ -75,7 +77,8 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
   const deletionPatches = [];
   const updatePatches = [];
 
-  // old keyed 노드 맵: key → { vnode, index }
+  // key가 있으면 "같은 위치"보다 "같은 아이템"인지 먼저 찾습니다.
+  // 그래서 reorder나 중간 삽입에도 비교 대상이 덜 흔들립니다.
   const oldKeyedMap = new Map();
   oldChildren.forEach((child, i) => {
     if (child && typeof child !== 'string' && child.key != null) {
@@ -90,7 +93,7 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
       .map((child) => child.key),
   );
 
-  // Phase 1: new에 없는 old keyed 노드 → DELETE (역순으로 생성)
+  // 삭제는 뒤에서부터 만들어야 앞 인덱스가 밀리지 않습니다.
   const indicesToDelete = [];
   oldKeyedMap.forEach(({ index }, key) => {
     if (!newKeySet.has(key)) {
@@ -103,7 +106,7 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
       deletionPatches.push({ type: 'DELETE', path: [...path, i] });
     });
 
-  // Phase 2: new 자식 각각에 대해 old와 매칭 후 diff
+  // 그다음 새 목록 순서대로 매칭하면서 내용 diff 또는 CREATE를 만듭니다.
   newChildren.forEach((newChild, i) => {
     const newKey =
       newChild && typeof newChild !== 'string' ? newChild.key : undefined;
@@ -111,7 +114,7 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
     if (newKey != null) {
       const oldEntry = oldKeyedMap.get(newKey);
       if (oldEntry) {
-        // 동일 key 존재 → 내용 재귀 비교 (new 인덱스 기준 경로 사용)
+        // 같은 key라면 "같은 아이템의 새 버전"으로 보고 재귀 diff 합니다.
         updatePatches.push(...diff(oldEntry.vnode, newChild, [...path, i]));
       } else {
         // 새 key → CREATE
@@ -125,7 +128,8 @@ function diffKeyedChildren(oldChildren, newChildren, path) {
     }
   });
 
-  // DELETE를 먼저 적용해야 이후 index 기반 패치가 올바른 노드를 참조함
+  // 실제 patch 적용 시에는 path가 인덱스 기반이라,
+  // DELETE를 먼저 처리해야 뒤쪽 노드 참조가 어긋나지 않습니다.
   return [...deletionPatches, ...updatePatches];
 }
 
@@ -144,16 +148,19 @@ function diffUnkeyedChildren(oldChildren, newChildren, path) {
   const patches = [];
   const sharedLength = Math.min(oldChildren.length, newChildren.length);
 
+  // 공통 길이 구간은 같은 인덱스끼리 비교합니다.
   for (let index = 0; index < sharedLength; index += 1) {
     patches.push(
       ...diff(oldChildren[index], newChildren[index], [...path, index]),
     );
   }
 
+  // 남는 old 자식은 삭제 대상입니다. 역시 뒤에서부터 지웁니다.
   for (let index = oldChildren.length - 1; index >= sharedLength; index -= 1) {
     patches.push({ type: 'DELETE', path: [...path, index] });
   }
 
+  // 남는 new 자식은 새로 생성합니다.
   for (let index = sharedLength; index < newChildren.length; index += 1) {
     patches.push({
       type: 'CREATE',
@@ -176,15 +183,18 @@ function diffUnkeyedChildren(oldChildren, newChildren, path) {
 export function diff(oldNode, newNode, path = []) {
   const patches = [];
 
+  // 둘 다 없으면 바뀐 것이 없습니다.
   if (oldNode == null && newNode == null) {
     return patches;
   }
 
+  // 이전에는 있었는데 새 트리에 없으면 삭제입니다.
   if (oldNode != null && newNode == null) {
     patches.push({ type: 'DELETE', path });
     return patches;
   }
 
+  // 이전에는 없고 새 트리에만 있으면 생성입니다.
   if (oldNode == null && newNode != null) {
     patches.push({ type: 'CREATE', path, newNode });
     return patches;
@@ -193,6 +203,7 @@ export function diff(oldNode, newNode, path = []) {
   const oldIsTextNode = typeof oldNode === 'string';
   const newIsTextNode = typeof newNode === 'string';
 
+  // 텍스트 노드는 문자열끼리 바로 비교합니다.
   if (oldIsTextNode && newIsTextNode) {
     if (oldNode !== newNode) {
       patches.push({ type: 'TEXT', path, text: newNode });
@@ -201,11 +212,13 @@ export function diff(oldNode, newNode, path = []) {
     return patches;
   }
 
+  // 한쪽만 텍스트라면 구조 자체가 달라졌다고 보고 교체합니다.
   if (oldIsTextNode || newIsTextNode) {
     patches.push({ type: 'REPLACE', path, newNode });
     return patches;
   }
 
+  // 태그 이름이 달라지면 자식 비교 대신 노드 전체 교체가 더 단순합니다.
   if (oldNode.type !== newNode.type) {
     patches.push({ type: 'REPLACE', path, newNode });
     return patches;

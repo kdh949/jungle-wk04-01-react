@@ -18,6 +18,7 @@ export function render(vnode, options = {}) {
     element.setAttribute(key, value);
   });
 
+  // 내부 key는 기본적으로 DOM에 노출하지 않고, 필요한 경우에만 옵션으로 붙입니다.
   if (includeKeyAttribute && vnode.key != null) {
     element.setAttribute('key', vnode.key);
   }
@@ -72,8 +73,8 @@ export function vnodeToHTML(vnode, depth = 0, compact = false) {
     return `${indent}<${vnode.type}${attributes}>${textContent}</${vnode.type}>`;
   }
 
-  // TextNode와 inline element가 섞인 경우 줄바꿈을 넣으면
-  // textarea -> parseHTML -> patch 과정에서 공백 텍스트가 새로 생깁니다.
+  // 텍스트와 inline 태그가 섞인 구간은 한 줄로 직렬화해야
+  // 다시 parseHTML 할 때 불필요한 공백 텍스트 노드가 늘어나지 않습니다.
   if (compact || (hasTextChild && canInlineMixedChildren)) {
     const childrenHTML = vnode.children
       .map((child) => vnodeToHTML(child, 0, true))
@@ -98,6 +99,7 @@ function escapeHTML(value) {
 }
 
 function isInlineTag(tagName) {
+  // 줄바꿈 없이 한 줄로 붙여도 자연스러운 HTML 태그 목록입니다.
   return new Set([
     'a',
     'abbr',

@@ -10,6 +10,7 @@ import { render } from './renderer.js';
 export function getNodeByPath(rootEl, path) {
   let currentNode = rootEl.firstChild ?? null;
 
+  // 루트 path([])는 real area 안의 첫 번째 실제 렌더 노드를 의미합니다.
   if (path.length === 0) {
     return currentNode;
   }
@@ -30,6 +31,7 @@ const getParentByPath = (rootEl, path) => {
     return rootEl;
   }
 
+  // 부모는 마지막 인덱스를 제외한 경로를 따라가면 찾을 수 있습니다.
   return getNodeByPath(rootEl, path.slice(0, -1));
 };
 
@@ -52,6 +54,7 @@ const updateProps = (element, propsDiff) => {
  * @returns {void}
  */
 export function applyPatches(rootEl, patches) {
+  // diff 단계에서 path 순서를 맞춰놨기 때문에 여기서는 순서대로 적용합니다.
   patches.forEach((patch) => {
     const targetNode = getNodeByPath(rootEl, patch.path);
     const parentNode = getParentByPath(rootEl, patch.path);
@@ -64,6 +67,7 @@ export function applyPatches(rootEl, patches) {
         }
 
         const newNode = render(patch.newNode);
+        // 기준 노드 앞에 insertBefore를 쓰면 "중간 삽입"과 "맨 끝 추가"를 모두 처리할 수 있습니다.
         const referenceNode =
           patch.path.length === 0
             ? rootEl.firstChild
@@ -98,6 +102,8 @@ export function applyPatches(rootEl, patches) {
           return;
         }
 
+        // 기대한 Text 노드가 아니라 Element를 잡은 경우에도
+        // 최소한 사용자가 본 내용은 맞도록 textContent로 덮어씁니다.
         if (targetNode instanceof Element) {
           targetNode.textContent = patch.text ?? '';
         }

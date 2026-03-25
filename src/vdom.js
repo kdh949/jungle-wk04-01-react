@@ -22,6 +22,8 @@ export function parseHTML(htmlString) {
 
   const parser = new DOMParser();
   const document = parser.parseFromString(htmlString, 'text/html');
+  // body 바로 아래 노드들을 모두 VNode로 바꾼 뒤,
+  // 여러 루트가 나오면 아래에서 div 하나로 감쌉니다.
   const childVNodes = Array.from(document.body.childNodes)
     .map((node) => domToVNode(node))
     .filter((node) => node !== null);
@@ -52,6 +54,7 @@ export function domToVNode(element) {
   let key;
 
   Array.from(element.attributes).forEach((attribute) => {
+    // key는 일반 props가 아니라 diff 추적용 메타데이터로 분리합니다.
     if (attribute.name === 'key') {
       key = attribute.value;
       return;
@@ -93,6 +96,7 @@ function createVNode(type, props, children, key) {
  */
 function normalizeTextNode(textNode) {
   const value = textNode.textContent ?? '';
+  // HTML 들여쓰기 때문에 생기는 여러 공백은 한 칸으로 줄입니다.
   const normalizedValue = value.replace(/\s+/g, ' ');
 
   if (normalizedValue.trim() === '') {
