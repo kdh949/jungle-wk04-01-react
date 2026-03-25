@@ -1,0 +1,12 @@
+{
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:node": "node --test tests/*.mjs",
+    "test:all": "npm run test:node && npm test"
+  },
+  "devDependencies": {
+    "jsdom": "^29.0.0",
+    "vitest": "^2.0.0"
+  }
+}
