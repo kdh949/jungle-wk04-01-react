@@ -35,7 +35,7 @@ npx live-server .
 | 기능 | 설명 |
 |---|---|
 | DOM → VNode 변환 | 실제 DOM 요소를 JS 객체 트리로 읽어들임 |
-| HTML 파싱 | `textarea`에 입력한 HTML 문자열 → VNode 트리 |
+| HTML 파싱 | `editor-surface`에서 편집한 HTML 문자열 → VNode 트리 |
 | Diff 알고리즘 | 이전/새 VNode 트리 비교 → 변경 목록(Patch[]) 생성 |
 | Patch 적용 | 변경된 부분만 실제 DOM에 최소 조작으로 반영 |
 | State History | 뒤로가기 / 앞으로가기로 VDOM 상태 이동 |
@@ -548,7 +548,7 @@ mini-react/
 └── tests/
     ├── diff.test.js        diffProps + diff 단위 테스트
     ├── history.test.js     createHistory 단위 테스트
-    ├── vdom.test.js        domToVNode + normalizeTextNode 단위 테스트
+    ├── vdom.test.js        parseHTML + domToVNode 단위 테스트
     ├── renderer.test.js    render + vnodeToHTML 단위 테스트
     ├── patch.test.js       getNodeByPath + applyPatches 단위 테스트
     └── integration.test.js diff → patch → DOM 통합 테스트
@@ -568,16 +568,16 @@ npm run test:all       # 둘 다 순서대로 실행
 
 ### 결과 요약
 
-**총 125개 테스트, 6개 파일 — 전부 통과 (0 실패)**
+**총 130개 테스트, 6개 파일 — 전부 통과 (0 실패)**
 
 | 파일 | 테스트 수 | 주요 검증 항목 |
 |---|---|---|
-| `diff.test.js` | 32 | diffProps, diff 6케이스, unkeyed/keyed 자식 비교 |
+| `diff.test.js` | 33 | diffProps, diff 6케이스, unkeyed/keyed 자식 비교, keyed reorder |
 | `history.test.js` | 20 | push/back/forward/canBack/canForward, 복합 시나리오 |
-| `vdom.test.js` | 15 | domToVNode, 텍스트 정규화, 키 분리, 공백 필터링 |
+| `vdom.test.js` | 18 | parseHTML, domToVNode, 텍스트 정규화, 키 분리, 공백 필터링 |
 | `renderer.test.js` | 21 | render(includeKeyAttribute 옵션 포함), vnodeToHTML 직렬화, HTML 이스케이프 |
 | `patch.test.js` | 17 | getNodeByPath, applyPatches 5가지 패치 타입 |
-| `integration.test.js` | 20 | diff + patch end-to-end, history + DOM, 라운드트립 |
+| `integration.test.js` | 21 | diff + patch end-to-end, history + DOM, 라운드트립, keyed reorder |
 
 ---
 
@@ -741,3 +741,38 @@ history.push({ type: 'p', children: ['state3'] });
 // forward() → state2로 이동, diff → patch → DOM이 'state2'
 // push(state4) → forwardStack 초기화 → canForward() === false
 ```
+
+---
+
+## 최종 인수 테스트 기록 (2026-03-26)
+
+- 최신 원격 반영 확인: `git fetch origin` 후 `git pull --ff-only origin main`으로 `origin/main`의 최신 커밋(`63fd1ab`)까지 동기화한 상태에서 재검증했다.
+- VDOM 검증 범위: `parseHTML()`의 단일 루트/다중 루트/텍스트-only 입력, `domToVNode()`의 key 분리와 공백 정규화, `render()`/`vnodeToHTML()` 라운드트립을 확인했다.
+- Diff/Patch 검증 범위: `CREATE`, `DELETE`, `REPLACE`, `UPDATE_PROPS`, `TEXT` 5가지 패치 타입, unkeyed 자식 역순 삭제, keyed 삭제/추가/내용 수정/순서 변경, history back/forward 경계 조건을 확인했다.
+- 자동 테스트 결과: `npm run test:all` 기준 `130 passed`, `0 failed`.
+
+### 이슈 / PR / 커밋 기준 오류 이력
+
+| 근거 | 발견된 문제 | 수정 내용 | 미수정 시 파급 효과 |
+|---|---|---|---|
+| Issue `#6`, PR `#8`, commit `72d90ab` | 자식 비교가 index 중심이라 keyed 리스트에서 삭제/삽입 시 잘못된 항목을 수정할 수 있었다. | `diffKeyedChildren()` 분기와 DELETE 우선 적용 규칙을 도입했다. | 리스트 identity가 무너져 다른 항목의 텍스트/속성이 잘못 바뀌는 회귀가 생길 수 있었다. |
+| PR `#14`, commit `f325251` | unkeyed DELETE를 앞에서부터 적용하면 인덱스가 밀려 일부 노드가 DOM에 남고, mixed content 직렬화/파싱 과정에서는 불필요한 공백 patch가 생겼다. | `diffUnkeyedChildren()`의 역순 DELETE, `vnodeToHTML()` 직렬화 보정, `domToVNode()` 공백 정규화를 추가했다. | 삭제 누락으로 실제 DOM과 VDOM이 달라지고, `<p>` 같은 mixed content에서 의미 없는 줄바꿈/공백 때문에 patch가 계속 발생할 수 있었다. |
+| Issue `#16`, PR `#17`, commit `f4cbe37` | README가 실제 구현보다 오래된 textarea 흐름을 설명했고, `renderer.test.js`도 `includeKeyAttribute` 옵션 동작과 어긋나 있었다. | 문서를 `editor-surface` + Live Sync 구조 기준으로 정정하고, renderer 테스트를 실제 API에 맞게 수정했다. | 유지보수자가 잘못된 UI 흐름을 기준으로 코드를 읽게 되고, 테스트 신뢰도도 함께 떨어질 수 있었다. |
+| Issue `#18` | 최신 `main`에서도 keyed reorder (`[a,b] -> [b,a]`) 시 `diff()`가 빈 배열을 반환해 실제 DOM 순서가 바뀌지 않았다. | 삭제 후 남은 자식을 현재 DOM 인덱스 기준으로 다시 비교하고, 같은 위치의 `key`가 달라지면 `REPLACE` 하도록 수정했다. `tests/diff.test.js`, `tests/integration.test.js`, `tests/vdom.test.js`에 회귀 테스트를 추가했다. | preview DOM 순서와 history 기준 VDOM 순서가 어긋나 live sync 편집에서 순서 변경이 누락되고, 이후 patch 계산도 잘못된 기준 위에서 누적될 수 있었다. |
+| PR `#15`, commit `144baa6` | 모듈별 회귀를 지속적으로 확인할 장치가 부족했다. | Vitest + jsdom 기반 종합 테스트 세트를 도입했고, 이번 수정으로 130개까지 확장했다. | 위 버그들이 다시 들어와도 머지 전에 잡히지 않을 가능성이 높았다. |
+
+### 이번 최종 수정에서 직접 확인한 재현 예시
+
+```js
+const oldNode = ul([kli('a', 'A'), kli('b', 'B')]);
+const newNode = ul([kli('b', 'B'), kli('a', 'A')]);
+
+diff(oldNode, newNode);
+// 수정 전  -> []
+// 수정 후  -> [
+//   { type: 'REPLACE', path: [0], newNode: kli('b', 'B') },
+//   { type: 'REPLACE', path: [1], newNode: kli('a', 'A') }
+// ]
+```
+
+> 참고: sibling 간 `key`는 여전히 **유일해야 한다**는 전제를 둔다. 중복 key는 React와 마찬가지로 비정상 입력이며, 본 프로젝트의 diff 결과도 그 경우까지 보장하지 않는다.
