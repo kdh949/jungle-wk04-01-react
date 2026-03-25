@@ -9,49 +9,80 @@
   <body>
     <main class="app-shell">
       <header class="app-header">
-        <h1>mini-react</h1>
-        <p>Virtual DOM diff and patch playground</p>
+        <h1>mini-react editor</h1>
+        <p>왼쪽 문서를 수정하면 오른쪽 preview가 diff patch로 갱신됩니다.</p>
       </header>
 
       <section class="workspace">
         <article class="panel">
           <div class="panel-header">
-            <h2>Real Area</h2>
+            <div>
+              <h2>Editor</h2>
+              <p>노션처럼 직접 내용을 수정해 보세요.</p>
+            </div>
+            <label class="sync-toggle" for="live-sync-toggle">
+              <input id="live-sync-toggle" type="checkbox" checked />
+              <span>Live Sync</span>
+            </label>
           </div>
-          <div id="real-area" class="panel-body">
-            <div id="sample-root">
-              <h1 class="title">Hello, Virtual DOM!</h1>
-              <ul>
-                <li key="1">Item 1</li>
-                <li key="2">Item 2</li>
-                <li key="3">Item 3</li>
-              </ul>
-              <p>
-                Edit the textarea on the right and click
-                <strong>Patch</strong>.
-              </p>
+          <div class="panel-body">
+            <div
+              id="editor-surface"
+              class="editor-surface"
+              contenteditable="true"
+              spellcheck="false"
+              aria-label="Editable document"
+            >
+              <div id="sample-root">
+                <h1 class="title">Hello, Virtual DOM!</h1>
+                <ul>
+                  <li key="1">Item 1</li>
+                  <li key="2">Item 2</li>
+                  <li key="3">Item 3</li>
+                </ul>
+                <p>Edit this document and watch the preview update on the right.</p>
+              </div>
             </div>
           </div>
         </article>
 
-        <article id="test-area" class="panel">
+        <article class="panel">
           <div class="panel-header">
-            <h2>Test Area</h2>
+            <div>
+              <h2>Preview</h2>
+              <p>mini-react diff/patch 결과가 여기에 반영됩니다.</p>
+            </div>
+            <span id="sync-state" class="panel-badge is-muted">Idle</span>
           </div>
-          <div class="panel-body">
-            <textarea
-              id="test-textarea"
-              spellcheck="false"
-              aria-label="HTML test area"
-            ></textarea>
-          </div>
+          <div id="preview-area" class="panel-body preview-area"></div>
         </article>
       </section>
 
-      <div class="button-row">
-        <button id="btn-back" type="button">Back</button>
-        <button id="btn-patch" type="button" class="primary">Patch</button>
-        <button id="btn-forward" type="button">Forward</button>
+      <section class="inspector-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Patch Inspector</h2>
+            <p>왼쪽 입력으로 생성된 diff 결과를 여기서 바로 확인할 수 있습니다.</p>
+          </div>
+          <span id="patch-summary" class="panel-badge is-muted">No Patches Yet</span>
+        </div>
+        <div class="inspector-body">
+          <ol id="patch-list" class="patch-list">
+            <li class="patch-empty">왼쪽 문서를 수정하면 patch 목록이 표시됩니다.</li>
+          </ol>
+        </div>
+      </section>
+
+      <div class="toolbar">
+        <div class="toolbar-copy">
+          <strong>History</strong>
+          <span>자동 동기화된 문서 상태를 앞뒤로 이동할 수 있습니다.</span>
+        </div>
+        <div class="button-row">
+          <button id="btn-back" type="button">Back</button>
+          <button id="btn-patch" type="button">Patch</button>
+          <button id="btn-forward" type="button">Forward</button>
+        </div>
       </div>
     </main>
 

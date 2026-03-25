@@ -2,9 +2,12 @@
  * VNode를 실제 DOM Element로 변환합니다 (초기 렌더링용).
  *
  * @param {Object|string} vnode
+ * @param {{ includeKeyAttribute?: boolean }} [options]
  * @returns {Element|Text}
  */
-export function render(vnode) {
+export function render(vnode, options = {}) {
+  const { includeKeyAttribute = false } = options;
+
   if (typeof vnode === 'string') {
     return document.createTextNode(vnode);
   }
@@ -15,12 +18,12 @@ export function render(vnode) {
     element.setAttribute(key, value);
   });
 
-  if (vnode.key != null) {
+  if (includeKeyAttribute && vnode.key != null) {
     element.setAttribute('key', vnode.key);
   }
 
   (vnode.children ?? []).forEach((child) => {
-    element.appendChild(render(child));
+    element.appendChild(render(child, options));
   });
 
   return element;
