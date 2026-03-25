@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mini-react</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <h1>mini-react</h1>
+        <p>Virtual DOM diff and patch playground</p>
+      </header>
+
+      <section class="workspace">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Real Area</h2>
+          </div>
+          <div id="real-area" class="panel-body">
+            <div id="sample-root">
+              <h1 class="title">Hello, Virtual DOM!</h1>
+              <ul>
+                <li key="1">Item 1</li>
+                <li key="2">Item 2</li>
+                <li key="3">Item 3</li>
+              </ul>
+              <p>
+                Edit the textarea on the right and click
+                <strong>Patch</strong>.
+              </p>
+            </div>
+          </div>
+        </article>
+
+        <article id="test-area" class="panel">
+          <div class="panel-header">
+            <h2>Test Area</h2>
+          </div>
+          <div class="panel-body">
+            <textarea
+              id="test-textarea"
+              spellcheck="false"
+              aria-label="HTML test area"
+            ></textarea>
+          </div>
+        </article>
+      </section>
+
+      <div class="button-row">
+        <button id="btn-back" type="button">Back</button>
+        <button id="btn-patch" type="button" class="primary">Patch</button>
+        <button id="btn-forward" type="button">Forward</button>
+      </div>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
